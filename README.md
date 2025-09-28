@@ -179,24 +179,32 @@ Value (when provided) can be a YAML literal (string/number/bool), a sequence lik
 ```bash
 # Add an empty tags key
 obsidian-cli frontmatter edit "{note-name}" --key "tags"
+yq --inplace '.tags = []' file.yaml
+yq --inplace '.tags = null' file.yaml
 
 # Add an empty custom key
 obsidian-cli frontmatter edit "{note-name}" --key "status"
+yq --inplace '.status = ""' file.yaml
 
 # Add multiple empty keys at once (comma-separated keys)
 obsidian-cli frontmatter edit "{note-name}" --key "tags,status,reviewer"
+yq --inplace '. += {"tags": [], "status": "", "reviewer": ""}' file.yaml
 
 # Set tags to a single tag
 obsidian-cli frontmatter edit "{note-name}" --key "tags" --value "project"
+yq --inplace '.tags = "project"' file.yaml
 
 # Set tags to multiple tags via comma-separated shorthand
 obsidian-cli frontmatter edit "{note-name}" --key "tags" --value "project,urgent"
+yq --inplace '. += {"tags": ["project", "urgent"]}' file.yaml
 
 # Set an arbitrary key using YAML syntax
 obsidian-cli frontmatter edit "{note-name}" --key "status" --value "in-progress"
+yq --inplace '.status = "in-progress"' file.yaml
 
 # Specify a vault explicitly
 obsidian-cli frontmatter edit "{note-name}" --vault "{vault-name}" --key "tags" --value "project"
+yq --inplace '.tags = ["project"]' file.yaml
 ```
 
 ### Frontmatter View
@@ -206,6 +214,7 @@ View a specific YAML frontmatter key from a note, or check if it matches/include
 ```bash
 # View value of a frontmatter key (prints YAML/scalar)
 obsidian-cli frontmatter view "{note-name}" --key "tags"
+yq .tags file.yaml
 
 # Check whether a key matches/includes a value (prints true/false)
 obsidian-cli frontmatter view "{note-name}" --key "tags" --value "project"
@@ -221,12 +230,15 @@ Clear the content/value of a frontmatter key, keeping the key present.
 ```bash
 # Clear tags (becomes an empty list if it was a list; otherwise becomes empty string)
 obsidian-cli frontmatter clear "{note-name}" --key "tags"
+yq --inplace '.tags = null' file.yaml
 
 # Clear multiple keys (comma-separated)
 obsidian-cli frontmatter clear "{note-name}" --key "date, status, tags"
+yq --inplace '(.date, .status, .tags) = null' file.yaml
 
 # Clear multiple keys (bracketed list)
 obsidian-cli frontmatter clear "{note-name}" --key "[date, status, tags]"
+yq --inplace '(.date, .status, .tags) = null' file.yaml
 ```
 
 ### Frontmatter Remove
@@ -236,12 +248,15 @@ Remove a frontmatter key entirely. If this was the last key, the whole frontmatt
 ```bash
 # Remove the tags key from frontmatter
 obsidian-cli frontmatter remove "{note-name}" --key "tags"
+yq --inplace 'del(.tags)' file.yaml
 
 # Remove multiple keys (comma-separated)
 obsidian-cli frontmatter remove "{note-name}" --key "date, status, tags"
+yq --inplace 'del(.date, .status, .tags)' file.yaml
 
 # Remove multiple keys (bracketed list)
 obsidian-cli frontmatter remove "{note-name}" --key "[date, status, tags]"
+yq --inplace 'del(.date, .status, .tags)' file.yaml
 ```
 
 ## Contribution
