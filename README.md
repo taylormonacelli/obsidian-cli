@@ -188,6 +188,7 @@ yq --inplace '.status = ""' file.yaml
 
 # Add multiple empty keys at once (comma-separated keys)
 obsidian-cli frontmatter edit "{note-name}" --key "tags,status,reviewer"
+yq --inplace '(.status, .reviewer) = "" | .tags = []' file.yaml
 yq --inplace '. += {"tags": [], "status": "", "reviewer": ""}' file.yaml
 
 # Set tags to a single tag
