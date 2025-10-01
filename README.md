@@ -197,6 +197,7 @@ yq --inplace '.tags = "project"' file.yaml
 
 # Set tags to multiple tags via comma-separated shorthand
 obsidian-cli frontmatter edit "{note-name}" --key "tags" --value "project,urgent"
+yq --inplace '.tags = ["project", "urgent"]' file.yaml
 yq --inplace '. += {"tags": ["project", "urgent"]}' file.yaml
 
 # Set an arbitrary key using YAML syntax
