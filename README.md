@@ -204,8 +204,8 @@ obsidian-cli frontmatter edit '.tags += ["new-tag"]' "{note-name}"
 obsidian-cli frontmatter .title "{note-name}" --vault "{vault-name}"
 
 # Aliases
-obsidian-cli fm .title "{note-name}"          # fm = frontmatter
-obsidian-cli fm p .author "{note-name}"       # p = print
+obsidian-cli fm .title "{note-name}"             # fm = frontmatter
+obsidian-cli fm p .author "{note-name}"          # p = print
 obsidian-cli fm e '.draft = true' "{note-name}"  # e = edit
 ```
 
