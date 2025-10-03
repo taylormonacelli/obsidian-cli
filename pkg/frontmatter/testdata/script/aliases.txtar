@@ -1,0 +1,62 @@
+# Test command aliases
+cp input.md test-vault/input.md
+cp input.md test-vault/input.md.backup
+
+# Test fm alias for frontmatter
+exec obsidian-cli fm print .title input.md
+cmp stdout title.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+# Test p alias for print
+exec obsidian-cli fm p .author input.md
+cmp stdout author.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+# Test e alias for edit
+cp test-vault/input.md test-vault/temp.md
+exec obsidian-cli fm e '.draft = true' temp.md
+! stdout .
+! stderr .
+cmp test-vault/temp.md edited.golden
+
+# Test print without expression (defaults to '.')
+exec obsidian-cli fm p input.md
+cmp stdout all.golden
+! stderr .
+
+# Test fm without subcommand (defaults to print with '.')
+exec obsidian-cli fm input.md
+cmp stdout all.golden
+! stderr .
+
+# Test fm with expression but no subcommand
+exec obsidian-cli fm .title input.md
+cmp stdout title.golden
+! stderr .
+
+-- input.md --
+---
+title: My Blog Post
+author: Jane Doe
+draft: false
+---
+
+# Content here
+-- title.golden --
+My Blog Post
+-- author.golden --
+Jane Doe
+-- edited.golden --
+---
+title: My Blog Post
+author: Jane Doe
+draft: true
+---
+
+# Content here
+-- all.golden --
+title: My Blog Post
+author: Jane Doe
+draft: false

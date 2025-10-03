@@ -7,7 +7,7 @@
 ## Description
 
 Obsidian is a powerful and extensible knowledge base application
-that works on top of your local folder of plain text notes. This CLI tool (written in Go) will let you interact with the application using the terminal. You are currently able to open, search, move, create, update and delete notes.
+that works on top of your local folder of plain text notes. This CLI tool (written in Go) will let you interact with the application using the terminal. You are currently able to open, search, move, create, update and delete notes, as well as query and modify YAML frontmatter.
 
 ---
 
@@ -201,6 +201,42 @@ obsidian-cli delete "{note-path}"
 obsidian-cli delete "{note-path}" --vault "{vault-name}"
 ```
 
+### Frontmatter Commands
+
+Query and modify YAML frontmatter in your Obsidian notes using yq expressions 
+from https://mikefarah.gitbook.io/yq/v/v4.x/.
+
+```bash
+# Print all frontmatter from a note
+obsidian-cli frontmatter "{note-name}"
+
+# Query specific frontmatter field
+obsidian-cli frontmatter .title "{note-name}"
+
+# Query nested fields
+obsidian-cli frontmatter .metadata.category "{note-name}"
+
+# Print with explicit subcommand
+obsidian-cli frontmatter print .tags "{note-name}"
+
+# Edit frontmatter in-place
+obsidian-cli frontmatter edit '.draft = true' "{note-name}"
+
+# Add new field
+obsidian-cli frontmatter edit '.published = "2025-10-02"' "{note-name}"
+
+# Modify arrays
+obsidian-cli frontmatter edit '.tags += ["new-tag"]' "{note-name}"
+
+# Use with specific vault
+obsidian-cli frontmatter .title "{note-name}" --vault "{vault-name}"
+
+# Aliases
+obsidian-cli fm .title "{note-name}"          # fm = frontmatter
+obsidian-cli fm p .author "{note-name}"       # p = print
+obsidian-cli fm e '.draft = true' "{note-name}"  # e = edit
+```
+
 ## Contribution
 
 Fork the project, add your feature or fix and submit a pull request. You can also open an [issue](https://github.com/yakitrak/obsidian-cli/issues/new/choose) to report a bug or request a feature.
@@ -208,3 +244,4 @@ Fork the project, add your feature or fix and submit a pull request. You can als
 ## License
 
 Available under [MIT License](./LICENSE)
+```

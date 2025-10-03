@@ -1,0 +1,25 @@
+# Test in-place editing
+cp input.md test-vault/temp.md
+exec obsidian-cli frontmatter edit '.draft = true' temp.md
+! stdout .
+! stderr .
+cmp test-vault/temp.md expected.golden
+
+-- input.md --
+---
+title: My Blog Post
+draft: false
+tags:
+  - golang
+---
+
+# Content here
+-- expected.golden --
+---
+title: My Blog Post
+draft: true
+tags:
+  - golang
+---
+
+# Content here

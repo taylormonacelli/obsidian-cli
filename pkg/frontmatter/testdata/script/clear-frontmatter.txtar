@@ -1,0 +1,22 @@
+# Test clearing all frontmatter
+cp input.md test-vault/temp.md
+exec obsidian-cli frontmatter edit '{}' temp.md
+! stdout .
+! stderr .
+cmp test-vault/temp.md cleared.golden
+
+-- input.md --
+---
+title: My Blog Post
+draft: false
+tags:
+  - golang
+---
+
+# Content here
+-- cleared.golden --
+---
+{}
+---
+
+# Content here

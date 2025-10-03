@@ -1,0 +1,19 @@
+# Test modifying and outputting frontmatter only (default with print)
+cp input.md test-vault/input.md
+cp input.md test-vault/input.md.backup
+
+exec obsidian-cli frontmatter print '.draft = true' input.md
+cmp stdout frontmatter-only.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+-- input.md --
+---
+title: My Blog Post
+draft: false
+---
+
+# Content here
+-- frontmatter-only.golden --
+title: My Blog Post
+draft: true

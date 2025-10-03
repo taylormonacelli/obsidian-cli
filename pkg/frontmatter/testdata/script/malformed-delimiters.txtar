@@ -1,0 +1,35 @@
+# Test file with only opening delimiter
+cp only-opening.md test-vault/only-opening.md
+cp only-opening.md test-vault/only-opening.md.backup
+
+! exec obsidian-cli frontmatter print .title only-opening.md
+stderr 'invalid frontmatter'
+cmp test-vault/only-opening.md test-vault/only-opening.md.backup
+
+# Test in-place edit should fail gracefully
+cp only-opening.md test-vault/temp.md
+! exec obsidian-cli frontmatter edit '.title = "New Title"' temp.md
+stderr 'invalid frontmatter'
+
+# Test file with no delimiters but looks like frontmatter
+cp no-delimiters.md test-vault/no-delimiters.md
+cp no-delimiters.md test-vault/no-delimiters.md.backup
+
+exec obsidian-cli frontmatter print '.title' no-delimiters.md
+cmp stdout empty.golden
+! stderr .
+cmp test-vault/no-delimiters.md test-vault/no-delimiters.md.backup
+
+-- only-opening.md --
+---
+title: Test
+author: Jane
+
+# This looks like content but delimiter never closed
+-- no-delimiters.md --
+title: Test
+author: Jane
+
+# Content without frontmatter delimiters
+-- empty.golden --
+null

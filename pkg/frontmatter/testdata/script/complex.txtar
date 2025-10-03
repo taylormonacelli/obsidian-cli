@@ -1,0 +1,44 @@
+# Test complex yq expressions
+cp input.md test-vault/input.md
+cp input.md test-vault/input.md.backup
+
+exec obsidian-cli frontmatter print '.tags | length' input.md
+cmp stdout tags-length.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+exec obsidian-cli frontmatter print '.tags[0]' input.md
+cmp stdout first-tag.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+exec obsidian-cli frontmatter print 'select(.draft == false) | .title' input.md
+cmp stdout conditional.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+exec obsidian-cli frontmatter print 'select(.draft == true) | .title' input.md
+cmp stdout empty.golden
+! stderr .
+cmp test-vault/input.md test-vault/input.md.backup
+
+-- input.md --
+---
+title: Complex Post
+draft: false
+tags:
+  - golang
+  - yq
+  - markdown
+metadata:
+  views: 1234
+---
+
+# Content
+-- tags-length.golden --
+3
+-- first-tag.golden --
+golang
+-- empty.golden --
+-- conditional.golden --
+Complex Post

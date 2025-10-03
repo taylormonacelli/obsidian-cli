@@ -1,0 +1,18 @@
+# Test that error messages don't include timestamps
+cp input.md test-vault/input.md
+cp input.md test-vault/input.md.backup
+
+# Test with invalid pipe expression that will cause an error
+! exec obsidian-cli frontmatter print '|' input.md
+stderr 'yaml processing error'
+! stderr '[0-9]{4}/[0-9]{2}/[0-9]{2}'
+cmp test-vault/input.md test-vault/input.md.backup
+
+-- input.md --
+---
+title: My Blog Post
+author: Jane Doe
+draft: false
+---
+
+# Content here

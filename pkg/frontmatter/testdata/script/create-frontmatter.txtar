@@ -1,0 +1,33 @@
+# Test creating frontmatter in file without any (in-place)
+cp no-frontmatter.md test-vault/temp1.md
+exec obsidian-cli frontmatter edit '.title = "New Title"' temp1.md
+! stdout .
+! stderr .
+cmp test-vault/temp1.md created-single.golden
+
+# Test creating multiple fields
+cp no-frontmatter.md test-vault/temp2.md
+exec obsidian-cli frontmatter edit '.title = "New" | .draft = true' temp2.md
+! stdout .
+! stderr .
+cmp test-vault/temp2.md created-multiple.golden
+
+-- no-frontmatter.md --
+# Just a heading
+
+No frontmatter here.
+-- created-single.golden --
+---
+title: New Title
+---
+# Just a heading
+
+No frontmatter here.
+-- created-multiple.golden --
+---
+title: New
+draft: true
+---
+# Just a heading
+
+No frontmatter here.
