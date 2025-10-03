@@ -174,36 +174,9 @@ obsidian-cli create "{note-name}" --content "abcde" --open
 
 ```
 
-### Move / Rename Note
+### Create / Update Note Frontmatter
 
-Moves a given note(path from top level of vault) with new name given (top level of vault). If given same path but different name then its treated as a rename. All links inside vault are updated to match new name.
-
-```bash
-# Renames a note in default obsidian
-obsidian-cli move "{current-note-path}" "{new-note-path}"
-
-# Renames a note and given obsidian
-obsidian-cli move "{current-note-path}" "{new-note-path}" --vault "{vault-name}"
-
-# Renames a note in default obsidian and opens it
-obsidian-cli move "{current-note-path}" "{new-note-path}" --open
-```
-
-### Delete Note
-
-Deletes a given note (path from top level of vault).
-
-```bash
-# Renames a note in default obsidian
-obsidian-cli delete "{note-path}"
-
-# Renames a note in given obsidian
-obsidian-cli delete "{note-path}" --vault "{vault-name}"
-```
-
-### Frontmatter Commands
-
-Query and modify YAML frontmatter in your Obsidian notes using yq expressions 
+Query and modify YAML frontmatter in your Obsidian notes using yq expressions
 from https://mikefarah.gitbook.io/yq/v/v4.x/.
 
 ```bash
@@ -237,6 +210,33 @@ obsidian-cli fm p .author "{note-name}"       # p = print
 obsidian-cli fm e '.draft = true' "{note-name}"  # e = edit
 ```
 
+### Move / Rename Note
+
+Moves a given note(path from top level of vault) with new name given (top level of vault). If given same path but different name then its treated as a rename. All links inside vault are updated to match new name.
+
+```bash
+# Renames a note in default obsidian
+obsidian-cli move "{current-note-path}" "{new-note-path}"
+
+# Renames a note and given obsidian
+obsidian-cli move "{current-note-path}" "{new-note-path}" --vault "{vault-name}"
+
+# Renames a note in default obsidian and opens it
+obsidian-cli move "{current-note-path}" "{new-note-path}" --open
+```
+
+### Delete Note
+
+Deletes a given note (path from top level of vault).
+
+```bash
+# Renames a note in default obsidian
+obsidian-cli delete "{note-path}"
+
+# Renames a note in given obsidian
+obsidian-cli delete "{note-path}" --vault "{vault-name}"
+```
+
 ## Contribution
 
 Fork the project, add your feature or fix and submit a pull request. You can also open an [issue](https://github.com/yakitrak/obsidian-cli/issues/new/choose) to report a bug or request a feature.
@@ -244,4 +244,3 @@ Fork the project, add your feature or fix and submit a pull request. You can als
 ## License
 
 Available under [MIT License](./LICENSE)
-```

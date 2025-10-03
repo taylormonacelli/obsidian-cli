@@ -23,7 +23,7 @@ func TestMain(m *testing.M) {
 
 func TestFrontmatterScript(t *testing.T) {
 	t.Parallel()
-	
+
 	testscript.Run(t, testscript.Params{
 		Dir:                 filepath.Join("pkg", "frontmatter", "testdata", "script"),
 		UpdateScripts:       *update,
@@ -33,7 +33,7 @@ func TestFrontmatterScript(t *testing.T) {
 			// use our test config directory instead of real user config
 			testConfigHome := filepath.Join(env.WorkDir, ".config")
 			env.Setenv("OBSIDIAN_CLI_CONFIG_HOME", testConfigHome)
-			
+
 			// Create isolated test vault
 			vaultPath := filepath.Join(env.WorkDir, "test-vault")
 			if err := os.MkdirAll(vaultPath, 0o755); err != nil {
