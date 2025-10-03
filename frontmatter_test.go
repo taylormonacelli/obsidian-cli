@@ -13,12 +13,11 @@ import (
 var update = flag.Bool("u", false, "update testscript output files")
 
 func TestMain(m *testing.M) {
-	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"obsidian-cli": func() int {
+	testscript.Main(m, map[string]func(){
+		"obsidian-cli": func() {
 			cmd.Execute()
-			return 0
 		},
-	}))
+	})
 }
 
 func TestFrontmatterScript(t *testing.T) {
