@@ -176,8 +176,7 @@ obsidian-cli create "{note-name}" --content "abcde" --open
 
 ### Create / Update Note Frontmatter
 
-Query and modify YAML frontmatter in your Obsidian notes using yq expressions
-from https://mikefarah.gitbook.io/yq/v/v4.x/.
+Query and modify YAML frontmatter in your Obsidian notes using [yq](https://mikefarah.gitbook.io/yq/v/v4.x) expressions.
 
 ```bash
 # Print all frontmatter from a note
