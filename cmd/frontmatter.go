@@ -14,8 +14,8 @@ import (
 var frontmatterCmd = &cobra.Command{
 	Use:     "frontmatter [expression] <note-name>",
 	Aliases: []string{"fm"},
-	Short:   "Add, delete, query and modify note frontmatter",
-	Long:    "Query and modify YAML frontmatter in markdown files. Defaults to print mode if no subcommand specified.",
+	Short:   "Add, delete, print and modify note frontmatter",
+	Long:    "Print and modify YAML frontmatter in markdown files. Defaults to print mode if no subcommand specified.",
 	Args:    cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
 		var expression, noteName string
@@ -57,7 +57,7 @@ var printFrontmatterCmd = &cobra.Command{
 	Use:     "print [expression] <note-name>",
 	Aliases: []string{"p"},
 	Short:   "Print frontmatter (read-only)",
-	Long:    "Query and display YAML frontmatter without modifying the file. If no expression is provided, defaults to '.' (show all).",
+	Long:    "Display YAML frontmatter without modifying the file. If no expression is provided, defaults to '.' (show all).",
 	Args:    cobra.RangeArgs(1, 2),
 	Run: func(cmd *cobra.Command, args []string) {
 		var expression, noteName string

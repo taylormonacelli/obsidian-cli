@@ -7,7 +7,7 @@
 ## Description
 
 Obsidian is a powerful and extensible knowledge base application
-that works on top of your local folder of plain text notes. This CLI tool (written in Go) will let you interact with the application using the terminal. You are currently able to open, search, move, create, update and delete notes, as well as query and modify YAML frontmatter.
+that works on top of your local folder of plain text notes. This CLI tool (written in Go) will let you interact with the application using the terminal. You are currently able to open, search, move, create, update and delete notes, as well as print and modify YAML frontmatter.
 
 ---
 
@@ -176,16 +176,16 @@ obsidian-cli create "{note-name}" --content "abcde" --open
 
 ### Create / Update Note Frontmatter
 
-Query and modify YAML frontmatter in your Obsidian notes using [yq](https://mikefarah.gitbook.io/yq/v/v4.x) expressions.
+Add, delete, print and modify YAML frontmatter in your Obsidian notes using [yq](https://mikefarah.gitbook.io/yq/v/v4.x) expressions.
 
 ```bash
 # Print all frontmatter from a note
 obsidian-cli frontmatter "{note-name}"
 
-# Query specific frontmatter field
+# Print specific frontmatter field
 obsidian-cli frontmatter .title "{note-name}"
 
-# Query nested fields
+# Print nested fields
 obsidian-cli frontmatter .metadata.category "{note-name}"
 
 # Print with explicit subcommand

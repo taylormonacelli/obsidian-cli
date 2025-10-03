@@ -1,4 +1,4 @@
-# Test basic frontmatter extraction and querying
+# Test basic frontmatter extraction and printing
 cp input.md test-vault/input.md
 
 exec obsidian-cli frontmatter print input.md
