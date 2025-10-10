@@ -13,7 +13,7 @@ var rootCmd = &cobra.Command{
 	Use:     "obsidian-cli",
 	Short:   "obsidian-cli - CLI to open, search, move, create, delete and update notes",
 	Version: "v0.1.9",
-	Long:    "obsidian-cli - CLI to open, search, move, create, delete and update notes with frontmatter support",
+	Long:    "obsidian-cli - CLI to open, search, move, create, delete and update notes",
 }
 
 func init() {
