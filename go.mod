@@ -5,7 +5,6 @@ go 1.24
 require (
 	github.com/ktr0731/go-fuzzyfinder v0.8.0
 	github.com/mikefarah/yq/v4 v4.47.2
-	github.com/rogpeppe/go-internal v1.14.1
 	github.com/skratchdot/open-golang v0.0.0-20200116055534-eef842397966
 	github.com/spf13/cobra v1.10.1
 	github.com/stretchr/testify v1.8.2
@@ -44,6 +43,5 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/term v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	golang.org/x/tools v0.35.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
