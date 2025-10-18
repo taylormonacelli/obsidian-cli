@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 func sortOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
@@ -24,48 +26,41 @@ func sortByOperator(d *dataTreeNavigator, context Context, expressionNode *Expre
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
 
-		var sortableArray sortableNodeArray
+		candidateNode := unwrapDoc(candidate.Node)
 
-		if candidate.CanVisitValues() {
-			sortableArray = make(sortableNodeArray, 0)
-			visitor := func(valueNode *CandidateNode) error {
-				compareContext, err := d.GetMatchingNodes(context.SingleReadonlyChildContext(valueNode), expressionNode.RHS)
-				if err != nil {
-					return err
-				}
-				sortableNode := sortableNode{Node: valueNode, CompareContext: compareContext, dateTimeLayout: context.GetDateTimeLayout()}
-				sortableArray = append(sortableArray, sortableNode)
-				return nil
+		if candidateNode.Kind != yaml.SequenceNode {
+			return context, fmt.Errorf("node at path [%v] is not an array (it's a %v)", candidate.GetNicePath(), candidate.GetNiceTag())
+		}
+
+		sortableArray := make(sortableNodeArray, len(candidateNode.Content))
+
+		for i, originalNode := range candidateNode.Content {
+
+			childCandidate := candidate.CreateChildInArray(i, originalNode)
+			compareContext, err := d.GetMatchingNodes(context.SingleReadonlyChildContext(childCandidate), expressionNode.RHS)
+			if err != nil {
+				return Context{}, err
 			}
-			if err := candidate.VisitValues(visitor); err != nil {
-				return context, err
-			}
-		} else {
-			return context, fmt.Errorf("node at path [%v] is not an array or map (it's a %v)", candidate.GetNicePath(), candidate.Tag)
+
+			sortableArray[i] = sortableNode{Node: originalNode, CompareContext: compareContext, dateTimeLayout: context.GetDateTimeLayout()}
+
 		}
 
 		sort.Stable(sortableArray)
 
-		sortedList := candidate.CopyWithoutContent()
-		switch candidate.Kind {
-		case MappingNode:
-			for _, sortedNode := range sortableArray {
-				sortedList.AddKeyValueChild(sortedNode.Node.Key, sortedNode.Node)
-			}
-		case SequenceNode:
-			for _, sortedNode := range sortableArray {
-				sortedList.AddChild(sortedNode.Node)
-			}
-		}
+		sortedList := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Style: candidateNode.Style}
+		sortedList.Content = make([]*yaml.Node, len(candidateNode.Content))
 
-		// convert array of value nodes back to map
-		results.PushBack(sortedList)
+		for i, sortedNode := range sortableArray {
+			sortedList.Content[i] = sortedNode.Node
+		}
+		results.PushBack(candidate.CreateReplacementWithDocWrappers(sortedList))
 	}
 	return context.ChildContext(results), nil
 }
 
 type sortableNode struct {
-	Node           *CandidateNode
+	Node           *yaml.Node
 	CompareContext Context
 	dateTimeLayout string
 }
@@ -80,12 +75,11 @@ func (a sortableNodeArray) Less(i, j int) bool {
 	rhsContext := a[j].CompareContext
 
 	rhsEl := rhsContext.MatchingNodes.Front()
-
 	for lhsEl := lhsContext.MatchingNodes.Front(); lhsEl != nil && rhsEl != nil; lhsEl = lhsEl.Next() {
 		lhs := lhsEl.Value.(*CandidateNode)
 		rhs := rhsEl.Value.(*CandidateNode)
 
-		result := a.compare(lhs, rhs, a[i].dateTimeLayout)
+		result := a.compare(lhs.Node, rhs.Node, a[i].dateTimeLayout)
 
 		if result < 0 {
 			return true
@@ -95,21 +89,21 @@ func (a sortableNodeArray) Less(i, j int) bool {
 
 		rhsEl = rhsEl.Next()
 	}
-	return lhsContext.MatchingNodes.Len() < rhsContext.MatchingNodes.Len()
+	return false
 }
 
-func (a sortableNodeArray) compare(lhs *CandidateNode, rhs *CandidateNode, dateTimeLayout string) int {
+func (a sortableNodeArray) compare(lhs *yaml.Node, rhs *yaml.Node, dateTimeLayout string) int {
 	lhsTag := lhs.Tag
 	rhsTag := rhs.Tag
 
 	if !strings.HasPrefix(lhsTag, "!!") {
 		// custom tag - we have to have a guess
-		lhsTag = lhs.guessTagFromCustomType()
+		lhsTag = guessTagFromCustomType(lhs)
 	}
 
 	if !strings.HasPrefix(rhsTag, "!!") {
 		// custom tag - we have to have a guess
-		rhsTag = rhs.guessTagFromCustomType()
+		rhsTag = guessTagFromCustomType(rhs)
 	}
 
 	isDateTime := lhsTag == "!!timestamp" && rhsTag == "!!timestamp"
@@ -130,9 +124,15 @@ func (a sortableNodeArray) compare(lhs *CandidateNode, rhs *CandidateNode, dateT
 	} else if lhsTag != "!!bool" && rhsTag == "!!bool" {
 		return 1
 	} else if lhsTag == "!!bool" && rhsTag == "!!bool" {
-		lhsTruthy := isTruthyNode(lhs)
+		lhsTruthy, err := isTruthyNode(lhs)
+		if err != nil {
+			panic(fmt.Errorf("could not parse %v as boolean: %w", lhs.Value, err))
+		}
 
-		rhsTruthy := isTruthyNode(rhs)
+		rhsTruthy, err := isTruthyNode(rhs)
+		if err != nil {
+			panic(fmt.Errorf("could not parse %v as boolean: %w", rhs.Value, err))
+		}
 		if lhsTruthy == rhsTruthy {
 			return 0
 		} else if lhsTruthy {

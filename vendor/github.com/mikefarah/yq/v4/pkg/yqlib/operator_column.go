@@ -3,16 +3,19 @@ package yqlib
 import (
 	"container/list"
 	"fmt"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
-func columnOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
+func columnOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 	log.Debugf("columnOperator")
 
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
-		result := candidate.CreateReplacement(ScalarNode, "!!int", fmt.Sprintf("%v", candidate.Column))
+		node := &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", candidate.Node.Column), Tag: "!!int"}
+		result := candidate.CreateReplacement(node)
 		results.PushBack(result)
 	}
 

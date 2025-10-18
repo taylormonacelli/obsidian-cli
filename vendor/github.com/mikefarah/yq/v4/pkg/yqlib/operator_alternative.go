@@ -1,7 +1,7 @@
 package yqlib
 
 func alternativeOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	log.Debugf("alternative")
+	log.Debugf("-- alternative")
 	prefs := crossFunctionPreferences{
 		CalcWhenEmpty: true,
 		Calculation:   alternativeFunc,
@@ -9,7 +9,10 @@ func alternativeOperator(d *dataTreeNavigator, context Context, expressionNode *
 			if lhs == nil {
 				return nil, nil
 			}
-			truthy := isTruthyNode(lhs)
+			truthy, err := isTruthy(lhs)
+			if err != nil {
+				return nil, err
+			}
 			if truthy {
 				return lhs, nil
 			}
@@ -19,16 +22,22 @@ func alternativeOperator(d *dataTreeNavigator, context Context, expressionNode *
 	return crossFunctionWithPrefs(d, context, expressionNode, prefs)
 }
 
-func alternativeFunc(_ *dataTreeNavigator, _ Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
+func alternativeFunc(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
 	if lhs == nil {
 		return rhs, nil
 	}
 	if rhs == nil {
 		return lhs, nil
 	}
+	lhs.Node = unwrapDoc(lhs.Node)
+	rhs.Node = unwrapDoc(rhs.Node)
+	log.Debugf("Alternative LHS: %v", lhs.Node.Tag)
+	log.Debugf("-          RHS: %v", rhs.Node.Tag)
 
-	isTrue := isTruthyNode(lhs)
-	if isTrue {
+	isTrue, err := isTruthy(lhs)
+	if err != nil {
+		return nil, err
+	} else if isTrue {
 		return lhs, nil
 	}
 	return rhs, nil

@@ -1,5 +1,3 @@
-//go:build !yq_nobase64
-
 package yqlib
 
 import (
@@ -7,23 +5,25 @@ import (
 	"encoding/base64"
 	"io"
 	"strings"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 type base64Padder struct {
-	count int
+	count uint64
 	io.Reader
 }
 
 func (c *base64Padder) pad(buf []byte) (int, error) {
-	pad := strings.Repeat("=", (4 - c.count%4))
+	pad := strings.Repeat("=", int(4-c.count%4))
 	n, err := strings.NewReader(pad).Read(buf)
-	c.count += n
+	c.count += uint64(n)
 	return n, err
 }
 
 func (c *base64Padder) Read(buf []byte) (int, error) {
 	n, err := c.Reader.Read(buf)
-	c.count += n
+	c.count += uint64(n)
 
 	if err == io.EOF && c.count%4 != 0 {
 		return c.pad(buf)
@@ -70,5 +70,11 @@ func (dec *base64Decoder) Decode() (*CandidateNode, error) {
 		}
 	}
 	dec.readAnything = true
-	return createStringScalarNode(buf.String()), nil
+	return &CandidateNode{
+		Node: &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: buf.String(),
+		},
+	}, nil
 }

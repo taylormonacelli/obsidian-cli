@@ -1,9 +1,10 @@
 package yqlib
 
 import (
-	"container/list"
 	"fmt"
 	"strconv"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 type compareTypePref struct {
@@ -12,14 +13,14 @@ type compareTypePref struct {
 }
 
 func compareOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	log.Debugf("compareOperator")
+	log.Debugf("-- compareOperator")
 	prefs := expressionNode.Operation.Preferences.(compareTypePref)
 	return crossFunction(d, context, expressionNode, compare(prefs), true)
 }
 
 func compare(prefs compareTypePref) func(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
-	return func(_ *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
-		log.Debugf("compare cross function")
+	return func(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
+		log.Debugf("-- compare cross function")
 		if lhs == nil && rhs == nil {
 			owner := &CandidateNode{}
 			return createBooleanCandidate(owner, prefs.OrEqual), nil
@@ -31,24 +32,27 @@ func compare(prefs compareTypePref) func(d *dataTreeNavigator, context Context, 
 			return createBooleanCandidate(lhs, false), nil
 		}
 
-		switch lhs.Kind {
-		case MappingNode:
+		lhs.Node = unwrapDoc(lhs.Node)
+		rhs.Node = unwrapDoc(rhs.Node)
+
+		switch lhs.Node.Kind {
+		case yaml.MappingNode:
 			return nil, fmt.Errorf("maps not yet supported for comparison")
-		case SequenceNode:
+		case yaml.SequenceNode:
 			return nil, fmt.Errorf("arrays not yet supported for comparison")
 		default:
-			if rhs.Kind != ScalarNode {
-				return nil, fmt.Errorf("%v (%v) cannot be subtracted from %v", rhs.Tag, rhs.GetNicePath(), lhs.Tag)
+			if rhs.Node.Kind != yaml.ScalarNode {
+				return nil, fmt.Errorf("%v (%v) cannot be subtracted from %v", rhs.Node.Tag, rhs.Path, lhs.Node.Tag)
 			}
-			target := lhs.CopyWithoutContent()
-			boolV, err := compareScalars(context, prefs, lhs, rhs)
+			target := lhs.CreateReplacement(&yaml.Node{})
+			boolV, err := compareScalars(context, prefs, lhs.Node, rhs.Node)
 
 			return createBooleanCandidate(target, boolV), err
 		}
 	}
 }
 
-func compareDateTime(layout string, prefs compareTypePref, lhs *CandidateNode, rhs *CandidateNode) (bool, error) {
+func compareDateTime(layout string, prefs compareTypePref, lhs *yaml.Node, rhs *yaml.Node) (bool, error) {
 	lhsTime, err := parseDateTime(layout, lhs.Value)
 	if err != nil {
 		return false, err
@@ -69,9 +73,9 @@ func compareDateTime(layout string, prefs compareTypePref, lhs *CandidateNode, r
 
 }
 
-func compareScalars(context Context, prefs compareTypePref, lhs *CandidateNode, rhs *CandidateNode) (bool, error) {
-	lhsTag := lhs.guessTagFromCustomType()
-	rhsTag := rhs.guessTagFromCustomType()
+func compareScalars(context Context, prefs compareTypePref, lhs *yaml.Node, rhs *yaml.Node) (bool, error) {
+	lhsTag := guessTagFromCustomType(lhs)
+	rhsTag := guessTagFromCustomType(rhs)
 
 	isDateTime := lhs.Tag == "!!timestamp"
 	// if the lhs is a string, it might be a timestamp in a custom format.
@@ -129,41 +133,4 @@ func compareScalars(context Context, prefs compareTypePref, lhs *CandidateNode, 
 	}
 
 	return false, fmt.Errorf("%v not yet supported for comparison", lhs.Tag)
-}
-
-func superlativeByComparison(d *dataTreeNavigator, context Context, prefs compareTypePref) (Context, error) {
-	fn := compare(prefs)
-
-	var results = list.New()
-
-	for seq := context.MatchingNodes.Front(); seq != nil; seq = seq.Next() {
-		splatted, err := splat(context.SingleChildContext(seq.Value.(*CandidateNode)), traversePreferences{})
-		if err != nil {
-			return Context{}, err
-		}
-		result := splatted.MatchingNodes.Front()
-		if result != nil {
-			for el := result.Next(); el != nil; el = el.Next() {
-				cmp, err := fn(d, context, el.Value.(*CandidateNode), result.Value.(*CandidateNode))
-				if err != nil {
-					return Context{}, err
-				}
-				if isTruthyNode(cmp) {
-					result = el
-				}
-			}
-			results.PushBack(result.Value)
-		}
-	}
-	return context.ChildContext(results), nil
-}
-
-func minOperator(d *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
-	log.Debug(("Min"))
-	return superlativeByComparison(d, context, compareTypePref{Greater: false})
-}
-
-func maxOperator(d *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
-	log.Debug(("Max"))
-	return superlativeByComparison(d, context, compareTypePref{Greater: true})
 }

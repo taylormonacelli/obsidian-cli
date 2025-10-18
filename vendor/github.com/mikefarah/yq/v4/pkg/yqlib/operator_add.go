@@ -5,6 +5,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 func createAddOp(lhs *ExpressionNode, rhs *ExpressionNode) *ExpressionNode {
@@ -17,77 +19,78 @@ func addAssignOperator(d *dataTreeNavigator, context Context, expressionNode *Ex
 	return compoundAssignFunction(d, context, expressionNode, createAddOp)
 }
 
-func toNodes(candidate *CandidateNode, lhs *CandidateNode) []*CandidateNode {
-	if candidate.Tag == "!!null" {
-		return []*CandidateNode{}
+func toNodes(candidate *CandidateNode, lhs *CandidateNode) ([]*yaml.Node, error) {
+	if candidate.Node.Tag == "!!null" {
+		return []*yaml.Node{}, nil
+	}
+	clone, err := candidate.Copy()
+	if err != nil {
+		return nil, err
 	}
 
-	clone := candidate.Copy()
-
-	switch candidate.Kind {
-	case SequenceNode:
-		return clone.Content
+	switch candidate.Node.Kind {
+	case yaml.SequenceNode:
+		return clone.Node.Content, nil
 	default:
-		if len(lhs.Content) > 0 {
-			clone.Style = lhs.Content[0].Style
+		if len(lhs.Node.Content) > 0 {
+			clone.Node.Style = lhs.Node.Content[0].Style
 		}
-		return []*CandidateNode{clone}
+		return []*yaml.Node{clone.Node}, nil
 	}
 
 }
 
 func addOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 	log.Debugf("Add operator")
-	// only calculate when empty IF we are the root expression; OR
-	// calcWhenEmpty := expressionNode.Parent == nil || expressionNode.Parent.LHS == expressionNode
-	calcWhenEmpty := context.MatchingNodes.Len() > 0
 
-	return crossFunction(d, context.ReadOnlyClone(), expressionNode, add, calcWhenEmpty)
+	return crossFunction(d, context.ReadOnlyClone(), expressionNode, add, false)
 }
 
-func add(_ *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
-	lhsNode := lhs
+func add(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
+	lhs.Node = unwrapDoc(lhs.Node)
+	rhs.Node = unwrapDoc(rhs.Node)
 
-	if lhs == nil && rhs == nil {
-		return nil, nil
-	} else if lhs == nil {
-		return rhs.Copy(), nil
-	} else if rhs == nil {
-		return lhs.Copy(), nil
-	} else if lhsNode.Tag == "!!null" {
-		return lhs.CopyAsReplacement(rhs), nil
+	lhsNode := lhs.Node
+
+	if lhsNode.Tag == "!!null" {
+		return lhs.CreateReplacement(rhs.Node), nil
 	}
 
-	target := lhs.CopyWithoutContent()
+	target := lhs.CreateReplacement(&yaml.Node{
+		Anchor: lhs.Node.Anchor,
+	})
 
 	switch lhsNode.Kind {
-	case MappingNode:
-		if rhs.Kind != MappingNode {
-			return nil, fmt.Errorf("%v (%v) cannot be added to a %v (%v)", rhs.Tag, rhs.GetNicePath(), lhsNode.Tag, lhs.GetNicePath())
+	case yaml.MappingNode:
+		if rhs.Node.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("%v (%v) cannot be added to a %v (%v)", rhs.Node.Tag, rhs.GetNicePath(), lhsNode.Tag, lhs.GetNicePath())
 		}
 		addMaps(target, lhs, rhs)
-	case SequenceNode:
-		addSequences(target, lhs, rhs)
-	case ScalarNode:
-		if rhs.Kind != ScalarNode {
-			return nil, fmt.Errorf("%v (%v) cannot be added to a %v (%v)", rhs.Tag, rhs.GetNicePath(), lhsNode.Tag, lhs.GetNicePath())
+	case yaml.SequenceNode:
+		if err := addSequences(target, lhs, rhs); err != nil {
+			return nil, err
 		}
-		target.Kind = ScalarNode
-		target.Style = lhsNode.Style
-		if err := addScalars(context, target, lhsNode, rhs); err != nil {
+
+	case yaml.ScalarNode:
+		if rhs.Node.Kind != yaml.ScalarNode {
+			return nil, fmt.Errorf("%v (%v) cannot be added to a %v (%v)", rhs.Node.Tag, rhs.GetNicePath(), lhsNode.Tag, lhs.GetNicePath())
+		}
+		target.Node.Kind = yaml.ScalarNode
+		target.Node.Style = lhsNode.Style
+		if err := addScalars(context, target, lhsNode, rhs.Node); err != nil {
 			return nil, err
 		}
 	}
 	return target, nil
 }
 
-func addScalars(context Context, target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode) error {
+func addScalars(context Context, target *CandidateNode, lhs *yaml.Node, rhs *yaml.Node) error {
 	lhsTag := lhs.Tag
-	rhsTag := rhs.guessTagFromCustomType()
+	rhsTag := guessTagFromCustomType(rhs)
 	lhsIsCustom := false
 	if !strings.HasPrefix(lhsTag, "!!") {
 		// custom tag - we have to have a guess
-		lhsTag = lhs.guessTagFromCustomType()
+		lhsTag = guessTagFromCustomType(lhs)
 		lhsIsCustom = true
 	}
 
@@ -103,16 +106,11 @@ func addScalars(context Context, target *CandidateNode, lhs *CandidateNode, rhs 
 		return addDateTimes(context.GetDateTimeLayout(), target, lhs, rhs)
 
 	} else if lhsTag == "!!str" {
-		target.Tag = lhs.Tag
-		if rhsTag == "!!null" {
-			target.Value = lhs.Value
-		} else {
-			target.Value = lhs.Value + rhs.Value
-		}
-
+		target.Node.Tag = lhs.Tag
+		target.Node.Value = lhs.Value + rhs.Value
 	} else if rhsTag == "!!str" {
-		target.Tag = rhs.Tag
-		target.Value = lhs.Value + rhs.Value
+		target.Node.Tag = rhs.Tag
+		target.Node.Value = lhs.Value + rhs.Value
 	} else if lhsTag == "!!int" && rhsTag == "!!int" {
 		format, lhsNum, err := parseInt64(lhs.Value)
 		if err != nil {
@@ -123,8 +121,8 @@ func addScalars(context Context, target *CandidateNode, lhs *CandidateNode, rhs 
 			return err
 		}
 		sum := lhsNum + rhsNum
-		target.Tag = lhs.Tag
-		target.Value = fmt.Sprintf(format, sum)
+		target.Node.Tag = lhs.Tag
+		target.Node.Value = fmt.Sprintf(format, sum)
 	} else if (lhsTag == "!!int" || lhsTag == "!!float") && (rhsTag == "!!int" || rhsTag == "!!float") {
 		lhsNum, err := strconv.ParseFloat(lhs.Value, 64)
 		if err != nil {
@@ -136,18 +134,18 @@ func addScalars(context Context, target *CandidateNode, lhs *CandidateNode, rhs 
 		}
 		sum := lhsNum + rhsNum
 		if lhsIsCustom {
-			target.Tag = lhs.Tag
+			target.Node.Tag = lhs.Tag
 		} else {
-			target.Tag = "!!float"
+			target.Node.Tag = "!!float"
 		}
-		target.Value = fmt.Sprintf("%v", sum)
+		target.Node.Value = fmt.Sprintf("%v", sum)
 	} else {
 		return fmt.Errorf("%v cannot be added to %v", lhsTag, rhsTag)
 	}
 	return nil
 }
 
-func addDateTimes(layout string, target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode) error {
+func addDateTimes(layout string, target *CandidateNode, lhs *yaml.Node, rhs *yaml.Node) error {
 
 	duration, err := time.ParseDuration(rhs.Value)
 	if err != nil {
@@ -160,57 +158,52 @@ func addDateTimes(layout string, target *CandidateNode, lhs *CandidateNode, rhs 
 	}
 
 	newTime := currentTime.Add(duration)
-	target.Value = newTime.Format(layout)
+	target.Node.Value = newTime.Format(layout)
 	return nil
 
 }
 
-func addSequences(target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode) {
-	log.Debugf("adding sequences! target: %v; lhs %v; rhs: %v", NodeToString(target), NodeToString(lhs), NodeToString(rhs))
-	target.Kind = SequenceNode
-	if len(lhs.Content) == 0 {
-		log.Debugf("dont copy lhs style")
-		target.Style = 0
+func addSequences(target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode) error {
+	target.Node.Kind = yaml.SequenceNode
+	if len(lhs.Node.Content) > 0 {
+		target.Node.Style = lhs.Node.Style
 	}
-	target.Tag = lhs.Tag
+	target.Node.Tag = lhs.Node.Tag
 
-	extraNodes := toNodes(rhs, lhs)
+	extraNodes, err := toNodes(rhs, lhs)
+	if err != nil {
+		return err
+	}
 
-	target.AddChildren(lhs.Content)
-	target.AddChildren(extraNodes)
+	target.Node.Content = append(deepCloneContent(lhs.Node.Content), extraNodes...)
+	return nil
+
 }
 
 func addMaps(target *CandidateNode, lhsC *CandidateNode, rhsC *CandidateNode) {
-	lhs := lhsC
-	rhs := rhsC
+	lhs := lhsC.Node
+	rhs := rhsC.Node
 
-	if len(lhs.Content) == 0 {
-		log.Debugf("dont copy lhs style")
-		target.Style = 0
-	}
-
-	target.Content = make([]*CandidateNode, 0)
-	target.AddChildren(lhs.Content)
+	target.Node.Content = make([]*yaml.Node, len(lhs.Content))
+	copy(target.Node.Content, lhs.Content)
 
 	for index := 0; index < len(rhs.Content); index = index + 2 {
 		key := rhs.Content[index]
 		value := rhs.Content[index+1]
 		log.Debug("finding %v", key.Value)
-		indexInLHS := findKeyInMap(target, key)
+		indexInLHS := findKeyInMap(target.Node, key)
 		log.Debug("indexInLhs %v", indexInLHS)
 		if indexInLHS < 0 {
 			// not in there, append it
-			target.AddKeyValueChild(key, value)
+			target.Node.Content = append(target.Node.Content, key, value)
 		} else {
 			// it's there, replace it
-			oldValue := target.Content[indexInLHS+1]
-			newValueCopy := oldValue.CopyAsReplacement(value)
-			target.Content[indexInLHS+1] = newValueCopy
+			target.Node.Content[indexInLHS+1] = value
 		}
 	}
-	target.Kind = MappingNode
+	target.Node.Kind = yaml.MappingNode
 	if len(lhs.Content) > 0 {
-		target.Style = lhs.Style
+		target.Node.Style = lhs.Style
 	}
-	target.Tag = lhs.Tag
+	target.Node.Tag = lhs.Tag
 }

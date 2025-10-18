@@ -1,39 +1,39 @@
-//go:build !yq_nocsv
-
 package yqlib
 
 import (
 	"encoding/csv"
 	"fmt"
 	"io"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 type csvEncoder struct {
 	separator rune
 }
 
-func NewCsvEncoder(prefs CsvPreferences) Encoder {
-	return &csvEncoder{separator: prefs.Separator}
+func NewCsvEncoder(separator rune) Encoder {
+	return &csvEncoder{separator: separator}
 }
 
 func (e *csvEncoder) CanHandleAliases() bool {
 	return false
 }
 
-func (e *csvEncoder) PrintDocumentSeparator(_ io.Writer) error {
+func (e *csvEncoder) PrintDocumentSeparator(writer io.Writer) error {
 	return nil
 }
 
-func (e *csvEncoder) PrintLeadingContent(_ io.Writer, _ string) error {
+func (e *csvEncoder) PrintLeadingContent(writer io.Writer, content string) error {
 	return nil
 }
 
-func (e *csvEncoder) encodeRow(csvWriter *csv.Writer, contents []*CandidateNode) error {
+func (e *csvEncoder) encodeRow(csvWriter *csv.Writer, contents []*yaml.Node) error {
 	stringValues := make([]string, len(contents))
 
 	for i, child := range contents {
 
-		if child.Kind != ScalarNode {
+		if child.Kind != yaml.ScalarNode {
 			return fmt.Errorf("csv encoding only works for arrays of scalars (string/numbers/booleans), child[%v] is a %v", i, child.Tag)
 		}
 		stringValues[i] = child.Value
@@ -41,10 +41,10 @@ func (e *csvEncoder) encodeRow(csvWriter *csv.Writer, contents []*CandidateNode)
 	return csvWriter.Write(stringValues)
 }
 
-func (e *csvEncoder) encodeArrays(csvWriter *csv.Writer, content []*CandidateNode) error {
+func (e *csvEncoder) encodeArrays(csvWriter *csv.Writer, content []*yaml.Node) error {
 	for i, child := range content {
 
-		if child.Kind != SequenceNode {
+		if child.Kind != yaml.SequenceNode {
 			return fmt.Errorf("csv encoding only works for arrays of scalars (string/numbers/booleans), child[%v] is a %v", i, child.Tag)
 		}
 		err := e.encodeRow(csvWriter, child.Content)
@@ -55,16 +55,16 @@ func (e *csvEncoder) encodeArrays(csvWriter *csv.Writer, content []*CandidateNod
 	return nil
 }
 
-func (e *csvEncoder) extractHeader(child *CandidateNode) ([]*CandidateNode, error) {
-	if child.Kind != MappingNode {
+func (e *csvEncoder) extractHeader(child *yaml.Node) ([]*yaml.Node, error) {
+	if child.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("csv object encoding only works for arrays of flat objects (string key => string/numbers/boolean value), child[0] is a %v", child.Tag)
 	}
 	mapKeys := getMapKeys(child)
 	return mapKeys.Content, nil
 }
 
-func (e *csvEncoder) createChildRow(child *CandidateNode, headers []*CandidateNode) []*CandidateNode {
-	childRow := make([]*CandidateNode, 0)
+func (e *csvEncoder) createChildRow(child *yaml.Node, headers []*yaml.Node) []*yaml.Node {
+	childRow := make([]*yaml.Node, 0)
 	for _, header := range headers {
 		keyIndex := findKeyInMap(child, header)
 		value := createScalarNode(nil, "")
@@ -77,7 +77,7 @@ func (e *csvEncoder) createChildRow(child *CandidateNode, headers []*CandidateNo
 
 }
 
-func (e *csvEncoder) encodeObjects(csvWriter *csv.Writer, content []*CandidateNode) error {
+func (e *csvEncoder) encodeObjects(csvWriter *csv.Writer, content []*yaml.Node) error {
 	headers, err := e.extractHeader(content[0])
 	if err != nil {
 		return nil
@@ -89,7 +89,7 @@ func (e *csvEncoder) encodeObjects(csvWriter *csv.Writer, content []*CandidateNo
 	}
 
 	for i, child := range content {
-		if child.Kind != MappingNode {
+		if child.Kind != yaml.MappingNode {
 			return fmt.Errorf("csv object encoding only works for arrays of flat objects (string key => string/numbers/boolean value), child[%v] is a %v", i, child.Tag)
 		}
 		row := e.createChildRow(child, headers)
@@ -102,25 +102,26 @@ func (e *csvEncoder) encodeObjects(csvWriter *csv.Writer, content []*CandidateNo
 	return nil
 }
 
-func (e *csvEncoder) Encode(writer io.Writer, node *CandidateNode) error {
-	if node.Kind == ScalarNode {
-		return writeString(writer, node.Value+"\n")
+func (e *csvEncoder) Encode(writer io.Writer, originalNode *yaml.Node) error {
+	if originalNode.Kind == yaml.ScalarNode {
+		return writeString(writer, originalNode.Value+"\n")
 	}
 
 	csvWriter := csv.NewWriter(writer)
 	csvWriter.Comma = e.separator
 
 	// node must be a sequence
-	if node.Kind != SequenceNode {
+	node := unwrapDoc(originalNode)
+	if node.Kind != yaml.SequenceNode {
 		return fmt.Errorf("csv encoding only works for arrays, got: %v", node.Tag)
 	} else if len(node.Content) == 0 {
 		return nil
 	}
-	if node.Content[0].Kind == ScalarNode {
+	if node.Content[0].Kind == yaml.ScalarNode {
 		return e.encodeRow(csvWriter, node.Content)
 	}
 
-	if node.Content[0].Kind == MappingNode {
+	if node.Content[0].Kind == yaml.MappingNode {
 		return e.encodeObjects(csvWriter, node.Content)
 	}
 

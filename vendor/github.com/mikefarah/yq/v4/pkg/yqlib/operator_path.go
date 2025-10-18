@@ -3,35 +3,36 @@ package yqlib
 import (
 	"container/list"
 	"fmt"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
-func createPathNodeFor(pathElement interface{}) *CandidateNode {
+func createPathNodeFor(pathElement interface{}) *yaml.Node {
 	switch pathElement := pathElement.(type) {
 	case string:
-		return &CandidateNode{Kind: ScalarNode, Value: pathElement, Tag: "!!str"}
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: pathElement, Tag: "!!str"}
 	default:
-		return &CandidateNode{Kind: ScalarNode, Value: fmt.Sprintf("%v", pathElement), Tag: "!!int"}
+		return &yaml.Node{Kind: yaml.ScalarNode, Value: fmt.Sprintf("%v", pathElement), Tag: "!!int"}
 	}
 }
 
-func getPathArrayFromNode(funcName string, node *CandidateNode) ([]interface{}, error) {
-	if node.Kind != SequenceNode {
+func getPathArrayFromNode(funcName string, node *yaml.Node) ([]interface{}, error) {
+	if node.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("%v: expected path array, but got %v instead", funcName, node.Tag)
 	}
 
 	path := make([]interface{}, len(node.Content))
 
 	for i, childNode := range node.Content {
-		switch childNode.Tag {
-		case "!!str":
+		if childNode.Tag == "!!str" {
 			path[i] = childNode.Value
-		case "!!int":
+		} else if childNode.Tag == "!!int" {
 			number, err := parseInt(childNode.Value)
 			if err != nil {
 				return nil, fmt.Errorf("%v: could not parse %v as an int: %w", funcName, childNode.Value, err)
 			}
 			path[i] = number
-		default:
+		} else {
 			return nil, fmt.Errorf("%v: expected either a !!str or !!int in the path, found %v instead", funcName, childNode.Tag)
 		}
 
@@ -58,7 +59,7 @@ func setPathOperator(d *dataTreeNavigator, context Context, expressionNode *Expr
 	}
 	lhsValue := lhsPathContext.MatchingNodes.Front().Value.(*CandidateNode)
 
-	lhsPath, err := getPathArrayFromNode("SETPATH", lhsValue)
+	lhsPath, err := getPathArrayFromNode("SETPATH", lhsValue.Node)
 
 	if err != nil {
 		return Context{}, err
@@ -109,7 +110,7 @@ func delPathsOperator(d *dataTreeNavigator, context Context, expressionNode *Exp
 	if pathArraysContext.MatchingNodes.Len() != 1 {
 		return Context{}, fmt.Errorf("DELPATHS: expected single value but found %v", pathArraysContext.MatchingNodes.Len())
 	}
-	pathArraysNode := pathArraysContext.MatchingNodes.Front().Value.(*CandidateNode)
+	pathArraysNode := pathArraysContext.MatchingNodes.Front().Value.(*CandidateNode).Node
 
 	if pathArraysNode.Tag != "!!seq" {
 		return Context{}, fmt.Errorf("DELPATHS: expected a sequence of sequences, but found %v", pathArraysNode.Tag)
@@ -148,24 +149,23 @@ func delPathsOperator(d *dataTreeNavigator, context Context, expressionNode *Exp
 
 }
 
-func getPathOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
+func getPathOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 	log.Debugf("GetPath")
 
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
-		node := candidate.CreateReplacement(SequenceNode, "!!seq", "")
+		node := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 
-		path := candidate.GetPath()
-
-		content := make([]*CandidateNode, len(path))
-		for pathIndex := 0; pathIndex < len(path); pathIndex++ {
-			path := path[pathIndex]
+		content := make([]*yaml.Node, len(candidate.Path))
+		for pathIndex := 0; pathIndex < len(candidate.Path); pathIndex++ {
+			path := candidate.Path[pathIndex]
 			content[pathIndex] = createPathNodeFor(path)
 		}
-		node.AddChildren(content)
-		results.PushBack(node)
+		node.Content = content
+		result := candidate.CreateReplacement(node)
+		results.PushBack(result)
 	}
 
 	return context.ChildContext(results), nil

@@ -15,7 +15,7 @@ func ProcessYAML(yamlString, expression string) (string, error) {
 	yqlib.InitExpressionParser()
 
 	decoder := yqlib.NewYamlDecoder(yqlib.ConfiguredYamlPreferences)
-	encoder := yqlib.NewYamlEncoder(yqlib.ConfiguredYamlPreferences)
+	encoder := yqlib.NewYamlEncoder(2, false, yqlib.ConfiguredYamlPreferences)
 
 	input := yamlString
 	if strings.TrimSpace(yamlString) == "" {

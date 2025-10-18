@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	yaml "go.yaml.in/yaml/v3"
+	yaml "gopkg.in/yaml.v3"
 )
 
 type yamlDecoder struct {
@@ -20,12 +20,8 @@ type yamlDecoder struct {
 	leadingContent string
 	bufferRead     bytes.Buffer
 
-	// anchor map persists over multiple documents for convenience.
-	anchorMap map[string]*CandidateNode
-
-	readAnything  bool
-	firstFile     bool
-	documentIndex uint
+	readAnything bool
+	firstFile    bool
 }
 
 func NewYamlDecoder(prefs YamlPreferences) Decoder {
@@ -37,7 +33,7 @@ func (dec *yamlDecoder) processReadStream(reader *bufio.Reader) (io.Reader, stri
 	var yamlDirectiveLineRegEx = regexp.MustCompile(`^\s*%YA`)
 	var sb strings.Builder
 	for {
-		peekBytes, err := reader.Peek(4)
+		peekBytes, err := reader.Peek(3)
 		if errors.Is(err, io.EOF) {
 			// EOF are handled else where..
 			return reader, sb.String(), nil
@@ -51,17 +47,9 @@ func (dec *yamlDecoder) processReadStream(reader *bufio.Reader) (io.Reader, stri
 			} else if err != nil {
 				return reader, sb.String(), err
 			}
-		} else if string(peekBytes) == "--- " {
-			_, err := reader.ReadString(' ')
-			sb.WriteString("$yqDocSeparator$\n")
-			if errors.Is(err, io.EOF) {
-				return reader, sb.String(), nil
-			} else if err != nil {
-				return reader, sb.String(), err
-			}
-		} else if string(peekBytes) == "---\n" {
+		} else if string(peekBytes) == "---" {
 			_, err := reader.ReadString('\n')
-			sb.WriteString("$yqDocSeparator$\n")
+			sb.WriteString("$yqDocSeperator$\n")
 			if errors.Is(err, io.EOF) {
 				return reader, sb.String(), nil
 			} else if err != nil {
@@ -105,15 +93,12 @@ func (dec *yamlDecoder) Init(reader io.Reader) error {
 	dec.readAnything = false
 	dec.decoder = *yaml.NewDecoder(readerToUse)
 	dec.firstFile = false
-	dec.documentIndex = 0
-	dec.anchorMap = make(map[string]*CandidateNode)
 	return nil
 }
 
 func (dec *yamlDecoder) Decode() (*CandidateNode, error) {
-	var yamlNode yaml.Node
-	err := dec.decoder.Decode(&yamlNode)
-
+	var dataBucket yaml.Node
+	err := dec.decoder.Decode(&dataBucket)
 	if errors.Is(err, io.EOF) && dec.leadingContent != "" && !dec.readAnything {
 		// force returning an empty node with a comment.
 		dec.readAnything = true
@@ -131,27 +116,28 @@ func (dec *yamlDecoder) Decode() (*CandidateNode, error) {
 		return nil, err
 	}
 
-	candidateNode := CandidateNode{document: dec.documentIndex}
-	// don't bother with the DocumentNode
-	err = candidateNode.UnmarshalYAML(yamlNode.Content[0], dec.anchorMap)
-	if err != nil {
-		return nil, err
+	candidateNode := &CandidateNode{
+		Node: &dataBucket,
 	}
-
-	candidateNode.HeadComment = yamlNode.HeadComment + candidateNode.HeadComment
-	candidateNode.FootComment = yamlNode.FootComment + candidateNode.FootComment
 
 	if dec.leadingContent != "" {
 		candidateNode.LeadingContent = dec.leadingContent
 		dec.leadingContent = ""
 	}
 	dec.readAnything = true
-	dec.documentIndex++
-	return &candidateNode, nil
+	// move document comments into candidate node
+	// otherwise unwrap drops them.
+	candidateNode.TrailingContent = dataBucket.FootComment
+	dataBucket.FootComment = ""
+	return candidateNode, nil
 }
 
 func (dec *yamlDecoder) blankNodeWithComment() *CandidateNode {
-	node := createScalarNode(nil, "")
-	node.LeadingContent = dec.leadingContent
-	return node
+	return &CandidateNode{
+		Document:       0,
+		Filename:       "",
+		Node:           &yaml.Node{Kind: yaml.DocumentNode, Content: []*yaml.Node{{Tag: "!!null", Kind: yaml.ScalarNode}}},
+		FileIndex:      0,
+		LeadingContent: dec.leadingContent,
+	}
 }

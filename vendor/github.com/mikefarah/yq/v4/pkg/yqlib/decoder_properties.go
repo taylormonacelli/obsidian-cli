@@ -1,5 +1,3 @@
-//go:build !yq_noprops
-
 package yqlib
 
 import (
@@ -10,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/magiconair/properties"
+	"gopkg.in/yaml.v3"
 )
 
 type propertiesDecoder struct {
@@ -53,13 +52,16 @@ func (dec *propertiesDecoder) applyPropertyComments(context Context, path []inte
 	assignmentOp := &Operation{OperationType: assignOpType, Preferences: assignPreferences{}}
 
 	rhsCandidateNode := &CandidateNode{
-		Tag:         "!!str",
-		Value:       fmt.Sprintf("%v", path[len(path)-1]),
-		HeadComment: dec.processComment(strings.Join(comments, "\n")),
-		Kind:        ScalarNode,
+		Path: path,
+		Node: &yaml.Node{
+			Tag:         "!!str",
+			Value:       fmt.Sprintf("%v", path[len(path)-1]),
+			HeadComment: dec.processComment(strings.Join(comments, "\n")),
+			Kind:        yaml.ScalarNode,
+		},
 	}
 
-	rhsCandidateNode.Tag = rhsCandidateNode.guessTagFromCustomType()
+	rhsCandidateNode.Node.Tag = guessTagFromCustomType(rhsCandidateNode.Node)
 
 	rhsOp := &Operation{OperationType: referenceOpType, CandidateNode: rhsCandidateNode}
 
@@ -85,8 +87,13 @@ func (dec *propertiesDecoder) applyProperty(context Context, properties *propert
 		}
 	}
 
-	rhsNode := createStringScalarNode(value)
-	rhsNode.Tag = rhsNode.guessTagFromCustomType()
+	rhsNode := &yaml.Node{
+		Value: value,
+		Tag:   "!!str",
+		Kind:  yaml.ScalarNode,
+	}
+
+	rhsNode.Tag = guessTagFromCustomType(rhsNode)
 
 	return dec.d.DeeplyAssign(context, path, rhsNode)
 }
@@ -111,8 +118,10 @@ func (dec *propertiesDecoder) Decode() (*CandidateNode, error) {
 	properties.DisableExpansion = true
 
 	rootMap := &CandidateNode{
-		Kind: MappingNode,
-		Tag:  "!!map",
+		Node: &yaml.Node{
+			Kind: yaml.MappingNode,
+			Tag:  "!!map",
+		},
 	}
 
 	context := Context{}
@@ -126,6 +135,11 @@ func (dec *propertiesDecoder) Decode() (*CandidateNode, error) {
 	}
 	dec.finished = true
 
-	return rootMap, nil
+	return &CandidateNode{
+		Node: &yaml.Node{
+			Kind:    yaml.DocumentNode,
+			Content: []*yaml.Node{rootMap.Node},
+		},
+	}, nil
 
 }

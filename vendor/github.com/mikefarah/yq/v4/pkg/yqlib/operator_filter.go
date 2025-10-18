@@ -5,7 +5,7 @@ import (
 )
 
 func filterOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	log.Debugf("filterOperation")
+	log.Debugf("-- filterOperation")
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
@@ -25,7 +25,7 @@ func filterOperator(d *dataTreeNavigator, context Context, expressionNode *Expre
 		if err != nil {
 			return Context{}, err
 		}
-		collected.Style = candidate.Style
+		collected.Node.Style = unwrapDoc(candidate.Node).Style
 		results.PushBack(collected)
 	}
 	return context.ChildContext(results), nil

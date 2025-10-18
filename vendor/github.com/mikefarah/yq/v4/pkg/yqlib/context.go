@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jinzhu/copier"
 	logging "gopkg.in/op/go-logging.v1"
 )
 
@@ -57,19 +58,13 @@ func (n *Context) SetVariable(name string, value *list.List) {
 func (n *Context) ChildContext(results *list.List) Context {
 	clone := Context{DontAutoCreate: n.DontAutoCreate, datetimeLayout: n.datetimeLayout}
 	clone.Variables = make(map[string]*list.List)
-	for variableKey, originalValueList := range n.Variables {
-
-		variableCopyList := list.New()
-		for el := originalValueList.Front(); el != nil; el = el.Next() {
-			// note that we dont make a copy of the candidate node
-			// this is so the 'ref' operator can work correctly.
-			clonedNode := el.Value.(*CandidateNode)
-			variableCopyList.PushBack(clonedNode)
+	if len(n.Variables) > 0 {
+		err := copier.Copy(&clone.Variables, n.Variables)
+		if err != nil {
+			log.Error("Error cloning context :(")
+			panic(err)
 		}
-
-		clone.Variables[variableKey] = variableCopyList
 	}
-
 	clone.MatchingNodes = results
 	return clone
 }
@@ -83,18 +78,35 @@ func (n *Context) ToString() string {
 }
 
 func (n *Context) DeepClone() Context {
-
-	clonedContent := list.New()
+	clone := Context{}
+	err := copier.Copy(&clone, n)
+	// copier doesn't do lists properly for some reason
+	clone.MatchingNodes = list.New()
 	for el := n.MatchingNodes.Front(); el != nil; el = el.Next() {
-		clonedNode := el.Value.(*CandidateNode).Copy()
-		clonedContent.PushBack(clonedNode)
+		clonedNode, err := el.Value.(*CandidateNode).Copy()
+		if err != nil {
+			log.Error("Error cloning context :(")
+			panic(err)
+		}
+		clone.MatchingNodes.PushBack(clonedNode)
 	}
 
-	return n.ChildContext(clonedContent)
+	if err != nil {
+		log.Error("Error cloning context :(")
+		panic(err)
+	}
+	return clone
 }
 
 func (n *Context) Clone() Context {
-	return n.ChildContext(n.MatchingNodes)
+	clone := Context{}
+	err := copier.Copy(&clone, n)
+
+	if err != nil {
+		log.Error("Error cloning context :(")
+		panic(err)
+	}
+	return clone
 }
 
 func (n *Context) ReadOnlyClone() Context {

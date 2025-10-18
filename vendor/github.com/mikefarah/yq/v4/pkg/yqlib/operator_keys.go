@@ -3,10 +3,12 @@ package yqlib
 import (
 	"container/list"
 	"fmt"
+
+	"gopkg.in/yaml.v3"
 )
 
-func isKeyOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
-	log.Debugf("isKeyOperator")
+func isKeyOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
+	log.Debugf("-- isKeyOperator")
 
 	var results = list.New()
 
@@ -19,8 +21,8 @@ func isKeyOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Co
 	return context.ChildContext(results), nil
 }
 
-func getKeyOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
-	log.Debugf("getKeyOperator")
+func getKeyOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
+	log.Debugf("-- getKeyOperator")
 
 	var results = list.New()
 
@@ -28,7 +30,7 @@ func getKeyOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (C
 		candidate := el.Value.(*CandidateNode)
 
 		if candidate.Key != nil {
-			results.PushBack(candidate.Key)
+			results.PushBack(candidate.CreateReplacement(candidate.Key))
 		}
 	}
 
@@ -36,49 +38,48 @@ func getKeyOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (C
 
 }
 
-func keysOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
-	log.Debugf("keysOperator")
+func keysOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
+	log.Debugf("-- keysOperator")
 
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
-
-		var targetNode *CandidateNode
-		switch candidate.Kind {
-		case MappingNode:
-			targetNode = getMapKeys(candidate)
-		case SequenceNode:
-			targetNode = getIndices(candidate)
-		default:
-			return Context{}, fmt.Errorf("cannot get keys of %v, keys only works for maps and arrays", candidate.Tag)
+		node := unwrapDoc(candidate.Node)
+		var targetNode *yaml.Node
+		if node.Kind == yaml.MappingNode {
+			targetNode = getMapKeys(node)
+		} else if node.Kind == yaml.SequenceNode {
+			targetNode = getIndicies(node)
+		} else {
+			return Context{}, fmt.Errorf("Cannot get keys of %v, keys only works for maps and arrays", node.Tag)
 		}
 
-		results.PushBack(targetNode)
+		result := candidate.CreateReplacement(targetNode)
+		results.PushBack(result)
 	}
 
 	return context.ChildContext(results), nil
 }
 
-func getMapKeys(node *CandidateNode) *CandidateNode {
-	contents := make([]*CandidateNode, 0)
+func getMapKeys(node *yaml.Node) *yaml.Node {
+	contents := make([]*yaml.Node, 0)
 	for index := 0; index < len(node.Content); index = index + 2 {
 		contents = append(contents, node.Content[index])
 	}
-
-	seq := &CandidateNode{Kind: SequenceNode, Tag: "!!seq"}
-	seq.AddChildren(contents)
-	return seq
+	return &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Content: contents}
 }
 
-func getIndices(node *CandidateNode) *CandidateNode {
-	var contents = make([]*CandidateNode, len(node.Content))
+func getIndicies(node *yaml.Node) *yaml.Node {
+	var contents = make([]*yaml.Node, len(node.Content))
 
 	for index := range node.Content {
-		contents[index] = createScalarNode(index, fmt.Sprintf("%v", index))
+		contents[index] = &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!int",
+			Value: fmt.Sprintf("%v", index),
+		}
 	}
 
-	seq := &CandidateNode{Kind: SequenceNode, Tag: "!!seq"}
-	seq.AddChildren(contents)
-	return seq
+	return &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq", Content: contents}
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 func divideOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
@@ -12,41 +14,46 @@ func divideOperator(d *dataTreeNavigator, context Context, expressionNode *Expre
 	return crossFunction(d, context.ReadOnlyClone(), expressionNode, divide, false)
 }
 
-func divide(_ *dataTreeNavigator, _ Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
-	if lhs.Tag == "!!null" {
-		return nil, fmt.Errorf("%v (%v) cannot be divided by %v (%v)", lhs.Tag, lhs.GetNicePath(), rhs.Tag, rhs.GetNicePath())
+func divide(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
+	lhs.Node = unwrapDoc(lhs.Node)
+	rhs.Node = unwrapDoc(rhs.Node)
+
+	lhsNode := lhs.Node
+
+	if lhsNode.Tag == "!!null" {
+		return nil, fmt.Errorf("%v (%v) cannot be divided by %v (%v)", lhsNode.Tag, lhs.GetNicePath(), rhs.Node.Tag, rhs.GetNicePath())
 	}
 
-	target := lhs.CopyWithoutContent()
+	target := &yaml.Node{}
 
-	if lhs.Kind == ScalarNode && rhs.Kind == ScalarNode {
-		if err := divideScalars(target, lhs, rhs); err != nil {
+	if lhsNode.Kind == yaml.ScalarNode && rhs.Node.Kind == yaml.ScalarNode {
+		if err := divideScalars(target, lhsNode, rhs.Node); err != nil {
 			return nil, err
 		}
 	} else {
-		return nil, fmt.Errorf("%v (%v) cannot be divided by %v (%v)", lhs.Tag, lhs.GetNicePath(), rhs.Tag, rhs.GetNicePath())
+		return nil, fmt.Errorf("%v (%v) cannot be divided by %v (%v)", lhsNode.Tag, lhs.GetNicePath(), rhs.Node.Tag, rhs.GetNicePath())
 	}
 
-	return target, nil
+	return lhs.CreateReplacement(target), nil
 }
 
-func divideScalars(target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode) error {
+func divideScalars(target *yaml.Node, lhs *yaml.Node, rhs *yaml.Node) error {
 	lhsTag := lhs.Tag
-	rhsTag := rhs.guessTagFromCustomType()
+	rhsTag := guessTagFromCustomType(rhs)
 	lhsIsCustom := false
 	if !strings.HasPrefix(lhsTag, "!!") {
 		// custom tag - we have to have a guess
-		lhsTag = lhs.guessTagFromCustomType()
+		lhsTag = guessTagFromCustomType(lhs)
 		lhsIsCustom = true
 	}
 
 	if lhsTag == "!!str" && rhsTag == "!!str" {
-		tKind, tTag, res := split(lhs.Value, rhs.Value)
-		target.Kind = tKind
-		target.Tag = tTag
-		target.AddChildren(res)
+		res := split(lhs.Value, rhs.Value)
+		target.Kind = res.Kind
+		target.Tag = res.Tag
+		target.Content = res.Content
 	} else if (lhsTag == "!!int" || lhsTag == "!!float") && (rhsTag == "!!int" || rhsTag == "!!float") {
-		target.Kind = ScalarNode
+		target.Kind = yaml.ScalarNode
 		target.Style = lhs.Style
 
 		lhsNum, err := strconv.ParseFloat(lhs.Value, 64)

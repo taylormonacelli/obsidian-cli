@@ -4,15 +4,16 @@ import (
 	"fmt"
 
 	logging "gopkg.in/op/go-logging.v1"
+	yaml "gopkg.in/yaml.v3"
 )
 
 type DataTreeNavigator interface {
-	// given the context and an expressionNode,
+	// given the context and a expressionNode,
 	// this will process the against the given expressionNode and return
 	// a new context of matching candidates
 	GetMatchingNodes(context Context, expressionNode *ExpressionNode) (Context, error)
 
-	DeeplyAssign(context Context, path []interface{}, rhsNode *CandidateNode) error
+	DeeplyAssign(context Context, path []interface{}, rhsNode *yaml.Node) error
 }
 
 type dataTreeNavigator struct {
@@ -22,20 +23,14 @@ func NewDataTreeNavigator() DataTreeNavigator {
 	return &dataTreeNavigator{}
 }
 
-func (d *dataTreeNavigator) DeeplyAssign(context Context, path []interface{}, rhsCandidateNode *CandidateNode) error {
+func (d *dataTreeNavigator) DeeplyAssign(context Context, path []interface{}, rhsNode *yaml.Node) error {
+
+	rhsCandidateNode := &CandidateNode{
+		Path: path,
+		Node: rhsNode,
+	}
 
 	assignmentOp := &Operation{OperationType: assignOpType, Preferences: assignPreferences{}}
-
-	if rhsCandidateNode.Kind == MappingNode {
-		log.Debug("DeeplyAssign: deeply merging object")
-		// if the rhs is a map, we need to deeply merge it in.
-		// otherwise we'll clobber any existing fields
-		assignmentOp = &Operation{OperationType: multiplyAssignOpType, Preferences: multiplyPreferences{
-			AppendArrays:  true,
-			TraversePrefs: traversePreferences{DontFollowAlias: true},
-			AssignPrefs:   assignPreferences{},
-		}}
-	}
 
 	rhsOp := &Operation{OperationType: valueOpType, CandidateNode: rhsCandidateNode}
 
@@ -60,10 +55,11 @@ func (d *dataTreeNavigator) GetMatchingNodes(context Context, expressionNode *Ex
 			log.Debug(NodeToString(el.Value.(*CandidateNode)))
 		}
 	}
+	log.Debug(">>")
 	handler := expressionNode.Operation.OperationType.Handler
 	if handler != nil {
 		return handler(d, context, expressionNode)
 	}
-	return Context{}, fmt.Errorf("unknown operator %v", expressionNode.Operation.OperationType.Type)
+	return Context{}, fmt.Errorf("Unknown operator %v", expressionNode.Operation.OperationType)
 
 }

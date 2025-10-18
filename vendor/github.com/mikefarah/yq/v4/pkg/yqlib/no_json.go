@@ -6,6 +6,6 @@ func NewJSONDecoder() Decoder {
 	return nil
 }
 
-func NewJSONEncoder(prefs JsonPreferences) Encoder {
+func NewJSONEncoder(indent int, colorise bool, unwrapScalar bool) Encoder {
 	return nil
 }

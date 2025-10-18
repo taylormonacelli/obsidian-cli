@@ -1,11 +1,11 @@
-//go:build !yq_nouri
-
 package yqlib
 
 import (
 	"bytes"
 	"io"
 	"net/url"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 type uriDecoder struct {
@@ -50,5 +50,11 @@ func (dec *uriDecoder) Decode() (*CandidateNode, error) {
 		return nil, err
 	}
 	dec.readAnything = true
-	return createStringScalarNode(newValue), nil
+	return &CandidateNode{
+		Node: &yaml.Node{
+			Kind:  yaml.ScalarNode,
+			Tag:   "!!str",
+			Value: newValue,
+		},
+	}, nil
 }

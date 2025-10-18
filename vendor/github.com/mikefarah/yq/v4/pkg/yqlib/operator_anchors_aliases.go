@@ -3,9 +3,9 @@ package yqlib
 import (
 	"container/list"
 	"fmt"
-)
 
-var showMergeAnchorToSpecWarning = true
+	yaml "gopkg.in/yaml.v3"
+)
 
 func assignAliasOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 
@@ -18,7 +18,7 @@ func assignAliasOperator(d *dataTreeNavigator, context Context, expressionNode *
 			return Context{}, err
 		}
 		if rhs.MatchingNodes.Front() != nil {
-			aliasName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Value
+			aliasName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Node.Value
 		}
 	}
 
@@ -38,25 +38,26 @@ func assignAliasOperator(d *dataTreeNavigator, context Context, expressionNode *
 				return Context{}, err
 			}
 			if rhs.MatchingNodes.Front() != nil {
-				aliasName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Value
+				aliasName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Node.Value
 			}
 		}
 
 		if aliasName != "" {
-			candidate.Kind = AliasNode
-			candidate.Value = aliasName
+			candidate.Node.Kind = yaml.AliasNode
+			candidate.Node.Value = aliasName
 		}
 	}
 	return context, nil
 }
 
-func getAliasOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
+func getAliasOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 	log.Debugf("GetAlias operator!")
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
-		result := candidate.CreateReplacement(ScalarNode, "!!str", candidate.Value)
+		node := &yaml.Node{Kind: yaml.ScalarNode, Value: candidate.Node.Value, Tag: "!!str"}
+		result := candidate.CreateReplacement(node)
 		results.PushBack(result)
 	}
 	return context.ChildContext(results), nil
@@ -74,7 +75,7 @@ func assignAnchorOperator(d *dataTreeNavigator, context Context, expressionNode 
 		}
 
 		if rhs.MatchingNodes.Front() != nil {
-			anchorName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Value
+			anchorName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Node.Value
 		}
 	}
 
@@ -95,30 +96,31 @@ func assignAnchorOperator(d *dataTreeNavigator, context Context, expressionNode 
 			}
 
 			if rhs.MatchingNodes.Front() != nil {
-				anchorName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Value
+				anchorName = rhs.MatchingNodes.Front().Value.(*CandidateNode).Node.Value
 			}
 		}
 
-		candidate.Anchor = anchorName
+		candidate.Node.Anchor = anchorName
 	}
 	return context, nil
 }
 
-func getAnchorOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
+func getAnchorOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 	log.Debugf("GetAnchor operator!")
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
-		anchor := candidate.Anchor
-		result := candidate.CreateReplacement(ScalarNode, "!!str", anchor)
+		anchor := candidate.Node.Anchor
+		node := &yaml.Node{Kind: yaml.ScalarNode, Value: anchor, Tag: "!!str"}
+		result := candidate.CreateReplacement(node)
 		results.PushBack(result)
 	}
 	return context.ChildContext(results), nil
 }
 
 func explodeOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	log.Debugf("ExplodeOperation")
+	log.Debugf("-- ExplodeOperation")
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
@@ -129,7 +131,7 @@ func explodeOperator(d *dataTreeNavigator, context Context, expressionNode *Expr
 			return Context{}, err
 		}
 		for childEl := rhs.MatchingNodes.Front(); childEl != nil; childEl = childEl.Next() {
-			err = explodeNode(childEl.Value.(*CandidateNode), context)
+			err = explodeNode(childEl.Value.(*CandidateNode).Node, context)
 			if err != nil {
 				return Context{}, err
 			}
@@ -140,60 +142,7 @@ func explodeOperator(d *dataTreeNavigator, context Context, expressionNode *Expr
 	return context, nil
 }
 
-func fixedReconstructAliasedMap(node *CandidateNode) error {
-	var newContent = []*CandidateNode{}
-
-	for index := 0; index < len(node.Content); index = index + 2 {
-		keyNode := node.Content[index]
-		valueNode := node.Content[index+1]
-		if keyNode.Tag != "!!merge" {
-			// always add in plain nodes
-			// explode both the key and value nodes
-			if err := explodeNode(keyNode, Context{}); err != nil {
-				return err
-			}
-			if err := explodeNode(valueNode, Context{}); err != nil {
-				return err
-			}
-			newContent = append(newContent, keyNode, valueNode)
-		} else {
-			sequence := valueNode
-			if sequence.Kind == AliasNode {
-				sequence = sequence.Alias
-			}
-			if sequence.Kind != SequenceNode {
-				sequence = &CandidateNode{Content: []*CandidateNode{sequence}}
-			}
-			for index := 0; index < len(sequence.Content); index = index + 1 {
-				// for merge anchors, we only set them if the key is not already in node or the newContent
-				mergeNodeSeq := sequence.Content[index]
-				if mergeNodeSeq.Kind == AliasNode {
-					mergeNodeSeq = mergeNodeSeq.Alias
-				}
-				if mergeNodeSeq.Kind != MappingNode {
-					return fmt.Errorf("can only use merge anchors with maps (!!map) or sequences (!!seq) of maps, but got sequence containing %v", mergeNodeSeq.Tag)
-				}
-				itemsToAdd := mergeNodeSeq.FilterMapContentByKey(func(keyNode *CandidateNode) bool {
-					return getContentValueByKey(node.Content, keyNode.Value) == nil &&
-						getContentValueByKey(newContent, keyNode.Value) == nil
-				})
-
-				for _, item := range itemsToAdd {
-					// copy to ensure exploding doesn't modify the original node
-					itemCopy := item.Copy()
-					if err := explodeNode(itemCopy, Context{}); err != nil {
-						return err
-					}
-					newContent = append(newContent, itemCopy)
-				}
-			}
-		}
-	}
-	node.Content = newContent
-	return nil
-}
-
-func reconstructAliasedMap(node *CandidateNode, context Context) error {
+func reconstructAliasedMap(node *yaml.Node, context Context) error {
 	var newContent = list.New()
 	// can I short cut here by prechecking if there's an anchor in the map?
 	// no it needs to recurse in overrideEntry.
@@ -208,7 +157,7 @@ func reconstructAliasedMap(node *CandidateNode, context Context) error {
 				return err
 			}
 		} else {
-			if valueNode.Kind == SequenceNode {
+			if valueNode.Kind == yaml.SequenceNode {
 				log.Debugf("an alias merge list!")
 				for index := len(valueNode.Content) - 1; index >= 0; index = index - 1 {
 					aliasNode := valueNode.Content[index]
@@ -226,39 +175,39 @@ func reconstructAliasedMap(node *CandidateNode, context Context) error {
 			}
 		}
 	}
-	node.Content = make([]*CandidateNode, 0)
+	node.Content = make([]*yaml.Node, newContent.Len())
+	index := 0
 	for newEl := newContent.Front(); newEl != nil; newEl = newEl.Next() {
-		node.AddChild(newEl.Value.(*CandidateNode))
+		node.Content[index] = newEl.Value.(*yaml.Node)
+		index++
 	}
 	return nil
 }
 
-func explodeNode(node *CandidateNode, context Context) error {
-	log.Debugf("explodeNode -  %v", NodeToString(node))
+func explodeNode(node *yaml.Node, context Context) error {
 	node.Anchor = ""
 	switch node.Kind {
-	case SequenceNode:
+	case yaml.SequenceNode, yaml.DocumentNode:
 		for index, contentNode := range node.Content {
-			log.Debugf("explodeNode -  index %v", index)
+			log.Debugf("exploding index %v", index)
 			errorInContent := explodeNode(contentNode, context)
 			if errorInContent != nil {
 				return errorInContent
 			}
 		}
 		return nil
-	case AliasNode:
-		log.Debugf("explodeNode - an alias to %v", NodeToString(node.Alias))
+	case yaml.AliasNode:
+		log.Debugf("its an alias!")
 		if node.Alias != nil {
 			node.Kind = node.Alias.Kind
 			node.Style = node.Alias.Style
 			node.Tag = node.Alias.Tag
-			node.AddChildren(node.Alias.Content)
+			node.Content = deepCloneContent(node.Alias.Content)
 			node.Value = node.Alias.Value
 			node.Alias = nil
 		}
-		log.Debug("now I'm %v", NodeToString(node))
 		return nil
-	case MappingNode:
+	case yaml.MappingNode:
 		// //check the map has an alias in it
 		hasAlias := false
 		for index := 0; index < len(node.Content); index = index + 2 {
@@ -270,13 +219,6 @@ func explodeNode(node *CandidateNode, context Context) error {
 		}
 
 		if hasAlias {
-			if ConfiguredYamlPreferences.FixMergeAnchorToSpec {
-				return fixedReconstructAliasedMap(node)
-			}
-			if showMergeAnchorToSpecWarning {
-				log.Warning("--yaml-fix-merge-anchor-to-spec is false; causing merge anchors to override the existing values which isn't to the yaml spec. This flag will default to true in late 2025.")
-				showMergeAnchorToSpecWarning = false
-			}
 			// this is a slow op, which is why we want to check before running it.
 			return reconstructAliasedMap(node, context)
 		}
@@ -299,14 +241,12 @@ func explodeNode(node *CandidateNode, context Context) error {
 	}
 }
 
-func applyAlias(node *CandidateNode, alias *CandidateNode, aliasIndex int, newContent Context) error {
-	log.Debug("alias is nil ?")
+func applyAlias(node *yaml.Node, alias *yaml.Node, aliasIndex int, newContent Context) error {
 	if alias == nil {
 		return nil
 	}
-	log.Debug("alias: %v", NodeToString(alias))
-	if alias.Kind != MappingNode {
-		return fmt.Errorf("can only use merge anchors with maps (!!map) or sequences (!!seq) of maps, but got sequence containing %v", alias.Tag)
+	if alias.Kind != yaml.MappingNode {
+		return fmt.Errorf("merge anchor only supports maps, got %v instead", alias.Tag)
 	}
 	for index := 0; index < len(alias.Content); index = index + 2 {
 		keyNode := alias.Content[index]
@@ -320,7 +260,7 @@ func applyAlias(node *CandidateNode, alias *CandidateNode, aliasIndex int, newCo
 	return nil
 }
 
-func overrideEntry(node *CandidateNode, key *CandidateNode, value *CandidateNode, startIndex int, newContent Context) error {
+func overrideEntry(node *yaml.Node, key *yaml.Node, value *yaml.Node, startIndex int, newContent Context) error {
 
 	err := explodeNode(value, newContent)
 
@@ -330,8 +270,8 @@ func overrideEntry(node *CandidateNode, key *CandidateNode, value *CandidateNode
 
 	for newEl := newContent.MatchingNodes.Front(); newEl != nil; newEl = newEl.Next() {
 		valueEl := newEl.Next() // move forward twice
-		keyNode := newEl.Value.(*CandidateNode)
-		log.Debugf("checking new content %v:%v", keyNode.Value, valueEl.Value.(*CandidateNode).Value)
+		keyNode := newEl.Value.(*yaml.Node)
+		log.Debugf("checking new content %v:%v", keyNode.Value, valueEl.Value.(*yaml.Node).Value)
 		if keyNode.Value == key.Value && keyNode.Alias == nil && key.Alias == nil {
 			log.Debugf("overridign new content")
 			valueEl.Value = value

@@ -1,5 +1,3 @@
-//go:build !yq_noprops
-
 package yqlib
 
 import (
@@ -10,15 +8,16 @@ import (
 	"strings"
 
 	"github.com/magiconair/properties"
+	yaml "gopkg.in/yaml.v3"
 )
 
 type propertiesEncoder struct {
-	prefs PropertiesPreferences
+	unwrapScalar bool
 }
 
-func NewPropertiesEncoder(prefs PropertiesPreferences) Encoder {
+func NewPropertiesEncoder(unwrapScalar bool) Encoder {
 	return &propertiesEncoder{
-		prefs: prefs,
+		unwrapScalar: unwrapScalar,
 	}
 }
 
@@ -26,7 +25,7 @@ func (pe *propertiesEncoder) CanHandleAliases() bool {
 	return false
 }
 
-func (pe *propertiesEncoder) PrintDocumentSeparator(_ io.Writer) error {
+func (pe *propertiesEncoder) PrintDocumentSeparator(writer io.Writer) error {
 	return nil
 }
 
@@ -38,7 +37,7 @@ func (pe *propertiesEncoder) PrintLeadingContent(writer io.Writer, content strin
 		if errReading != nil && !errors.Is(errReading, io.EOF) {
 			return errReading
 		}
-		if strings.Contains(readline, "$yqDocSeparator$") {
+		if strings.Contains(readline, "$yqDocSeperator$") {
 
 			if err := pe.PrintDocumentSeparator(writer); err != nil {
 				return err
@@ -63,15 +62,14 @@ func (pe *propertiesEncoder) PrintLeadingContent(writer io.Writer, content strin
 	return nil
 }
 
-func (pe *propertiesEncoder) Encode(writer io.Writer, node *CandidateNode) error {
+func (pe *propertiesEncoder) Encode(writer io.Writer, node *yaml.Node) error {
 
-	if node.Kind == ScalarNode {
+	if node.Kind == yaml.ScalarNode {
 		return writeString(writer, node.Value+"\n")
 	}
 
 	mapKeysToStrings(node)
 	p := properties.NewProperties()
-	p.WriteSeparator = pe.prefs.KeyValueSeparator
 	err := pe.doEncode(p, node, "", nil)
 	if err != nil {
 		return err
@@ -81,7 +79,7 @@ func (pe *propertiesEncoder) Encode(writer io.Writer, node *CandidateNode) error
 	return err
 }
 
-func (pe *propertiesEncoder) doEncode(p *properties.Properties, node *CandidateNode, path string, keyNode *CandidateNode) error {
+func (pe *propertiesEncoder) doEncode(p *properties.Properties, node *yaml.Node, path string, keyNode *yaml.Node) error {
 
 	comments := ""
 	if keyNode != nil {
@@ -93,23 +91,25 @@ func (pe *propertiesEncoder) doEncode(p *properties.Properties, node *CandidateN
 	p.SetComments(path, strings.Split(commentsWithSpaces, "\n"))
 
 	switch node.Kind {
-	case ScalarNode:
+	case yaml.ScalarNode:
 		var nodeValue string
-		if pe.prefs.UnwrapScalar || !strings.Contains(node.Value, " ") {
+		if pe.unwrapScalar || !strings.Contains(node.Value, " ") {
 			nodeValue = node.Value
 		} else {
 			nodeValue = fmt.Sprintf("%q", node.Value)
 		}
 		_, _, err := p.Set(path, nodeValue)
 		return err
-	case SequenceNode:
+	case yaml.DocumentNode:
+		return pe.doEncode(p, node.Content[0], path, node)
+	case yaml.SequenceNode:
 		return pe.encodeArray(p, node.Content, path)
-	case MappingNode:
+	case yaml.MappingNode:
 		return pe.encodeMap(p, node.Content, path)
-	case AliasNode:
+	case yaml.AliasNode:
 		return pe.doEncode(p, node.Alias, path, nil)
 	default:
-		return fmt.Errorf("unsupported node %v", node.Tag)
+		return fmt.Errorf("Unsupported node %v", node.Tag)
 	}
 }
 
@@ -117,17 +117,10 @@ func (pe *propertiesEncoder) appendPath(path string, key interface{}) string {
 	if path == "" {
 		return fmt.Sprintf("%v", key)
 	}
-	switch key.(type) {
-	case int:
-		if pe.prefs.UseArrayBrackets {
-			return fmt.Sprintf("%v[%v]", path, key)
-		}
-
-	}
 	return fmt.Sprintf("%v.%v", path, key)
 }
 
-func (pe *propertiesEncoder) encodeArray(p *properties.Properties, kids []*CandidateNode, path string) error {
+func (pe *propertiesEncoder) encodeArray(p *properties.Properties, kids []*yaml.Node, path string) error {
 	for index, child := range kids {
 		err := pe.doEncode(p, child, pe.appendPath(path, index), nil)
 		if err != nil {
@@ -137,7 +130,7 @@ func (pe *propertiesEncoder) encodeArray(p *properties.Properties, kids []*Candi
 	return nil
 }
 
-func (pe *propertiesEncoder) encodeMap(p *properties.Properties, kids []*CandidateNode, path string) error {
+func (pe *propertiesEncoder) encodeMap(p *properties.Properties, kids []*yaml.Node, path string) error {
 	for index := 0; index < len(kids); index = index + 2 {
 		key := kids[index]
 		value := kids[index+1]

@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"golang.org/x/net/html/charset"
+	yaml "gopkg.in/yaml.v3"
 )
 
 type xmlDecoder struct {
@@ -35,14 +36,14 @@ func (dec *xmlDecoder) Init(reader io.Reader) error {
 	return nil
 }
 
-func (dec *xmlDecoder) createSequence(nodes []*xmlNode) (*CandidateNode, error) {
-	yamlNode := &CandidateNode{Kind: SequenceNode, Tag: "!!seq"}
+func (dec *xmlDecoder) createSequence(nodes []*xmlNode) (*yaml.Node, error) {
+	yamlNode := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 	for _, child := range nodes {
 		yamlChild, err := dec.convertToYamlNode(child)
 		if err != nil {
 			return nil, err
 		}
-		yamlNode.AddChild(yamlChild)
+		yamlNode.Content = append(yamlNode.Content, yamlChild)
 	}
 
 	return yamlNode, nil
@@ -63,9 +64,9 @@ func (dec *xmlDecoder) processComment(c string) string {
 	return replacement
 }
 
-func (dec *xmlDecoder) createMap(n *xmlNode) (*CandidateNode, error) {
+func (dec *xmlDecoder) createMap(n *xmlNode) (*yaml.Node, error) {
 	log.Debug("createMap: headC: %v, lineC: %v, footC: %v", n.HeadComment, n.LineComment, n.FootComment)
-	yamlNode := &CandidateNode{Kind: MappingNode, Tag: "!!map"}
+	yamlNode := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 
 	if len(n.Data) > 0 {
 		log.Debugf("creating content node for map: %v", dec.prefs.ContentName)
@@ -74,14 +75,14 @@ func (dec *xmlDecoder) createMap(n *xmlNode) (*CandidateNode, error) {
 		labelNode.HeadComment = dec.processComment(n.HeadComment)
 		labelNode.LineComment = dec.processComment(n.LineComment)
 		labelNode.FootComment = dec.processComment(n.FootComment)
-		yamlNode.AddKeyValueChild(labelNode, dec.createValueNodeFromData(n.Data))
+		yamlNode.Content = append(yamlNode.Content, labelNode, dec.createValueNodeFromData(n.Data))
 	}
 
 	for i, keyValuePair := range n.Children {
 		label := keyValuePair.K
 		children := keyValuePair.V
 		labelNode := createScalarNode(label, label)
-		var valueNode *CandidateNode
+		var valueNode *yaml.Node
 		var err error
 
 		if i == 0 {
@@ -119,32 +120,32 @@ func (dec *xmlDecoder) createMap(n *xmlNode) (*CandidateNode, error) {
 				return nil, err
 			}
 		}
-		yamlNode.AddKeyValueChild(labelNode, valueNode)
+		yamlNode.Content = append(yamlNode.Content, labelNode, valueNode)
 	}
 
 	return yamlNode, nil
 }
 
-func (dec *xmlDecoder) createValueNodeFromData(values []string) *CandidateNode {
+func (dec *xmlDecoder) createValueNodeFromData(values []string) *yaml.Node {
 	switch len(values) {
 	case 0:
 		return createScalarNode(nil, "")
 	case 1:
 		return createScalarNode(values[0], values[0])
 	default:
-		content := make([]*CandidateNode, 0)
+		content := make([]*yaml.Node, 0)
 		for _, value := range values {
 			content = append(content, createScalarNode(value, value))
 		}
-		return &CandidateNode{
-			Kind:    SequenceNode,
+		return &yaml.Node{
+			Kind:    yaml.SequenceNode,
 			Tag:     "!!seq",
 			Content: content,
 		}
 	}
 }
 
-func (dec *xmlDecoder) convertToYamlNode(n *xmlNode) (*CandidateNode, error) {
+func (dec *xmlDecoder) convertToYamlNode(n *xmlNode) (*yaml.Node, error) {
 	if len(n.Children) > 0 {
 		return dec.createMap(n)
 	}
@@ -188,7 +189,12 @@ func (dec *xmlDecoder) Decode() (*CandidateNode, error) {
 	dec.readAnything = true
 	dec.finished = true
 
-	return firstNode, nil
+	return &CandidateNode{
+		Node: &yaml.Node{
+			Kind:    yaml.DocumentNode,
+			Content: []*yaml.Node{firstNode},
+		},
+	}, nil
 }
 
 type xmlNode struct {
@@ -299,10 +305,6 @@ func (dec *xmlDecoder) decodeXML(root *xmlNode) error {
 				log.Debug("chardata [%v] for %v", elem.n.Data, elem.label)
 			}
 		case xml.EndElement:
-			if elem == nil {
-				log.Debug("no element, probably bad xml")
-				continue
-			}
 			log.Debug("end element %v", elem.label)
 			elem.state = "finished"
 			// And add it to its parent list
@@ -315,14 +317,13 @@ func (dec *xmlDecoder) decodeXML(root *xmlNode) error {
 		case xml.Comment:
 
 			commentStr := string(xml.CharData(se))
-			switch elem.state {
-			case "started":
+			if elem.state == "started" {
 				applyFootComment(elem, commentStr)
 
-			case "chardata":
+			} else if elem.state == "chardata" {
 				log.Debug("got a line comment for (%v) %v: [%v]", elem.state, elem.label, commentStr)
 				elem.n.LineComment = joinComments([]string{elem.n.LineComment, commentStr}, " ")
-			default:
+			} else {
 				log.Debug("got a head comment for (%v) %v: [%v]", elem.state, elem.label, commentStr)
 				elem.n.HeadComment = joinComments([]string{elem.n.HeadComment, commentStr}, " ")
 			}

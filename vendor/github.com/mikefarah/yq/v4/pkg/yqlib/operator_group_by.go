@@ -5,11 +5,13 @@ import (
 	"fmt"
 
 	"github.com/elliotchance/orderedmap"
+	yaml "gopkg.in/yaml.v3"
 )
 
-func processIntoGroups(d *dataTreeNavigator, context Context, rhsExp *ExpressionNode, node *CandidateNode) (*orderedmap.OrderedMap, error) {
+func processIntoGroups(d *dataTreeNavigator, context Context, rhsExp *ExpressionNode, node *yaml.Node) (*orderedmap.OrderedMap, error) {
 	var newMatches = orderedmap.NewOrderedMap()
-	for _, child := range node.Content {
+	for _, node := range node.Content {
+		child := &CandidateNode{Node: node}
 		rhs, err := d.GetMatchingNodes(context.SingleReadonlyChildContext(child), rhsExp)
 
 		if err != nil {
@@ -21,7 +23,7 @@ func processIntoGroups(d *dataTreeNavigator, context Context, rhsExp *Expression
 		if rhs.MatchingNodes.Len() > 0 {
 			first := rhs.MatchingNodes.Front()
 			keyCandidate := first.Value.(*CandidateNode)
-			keyValue = keyCandidate.Value
+			keyValue = keyCandidate.Node.Value
 		}
 
 		groupList, exists := newMatches.Get(keyValue)
@@ -30,41 +32,42 @@ func processIntoGroups(d *dataTreeNavigator, context Context, rhsExp *Expression
 			groupList = list.New()
 			newMatches.Set(keyValue, groupList)
 		}
-		groupList.(*list.List).PushBack(child)
+		groupList.(*list.List).PushBack(node)
 	}
 	return newMatches, nil
 }
 
 func groupBy(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 
-	log.Debugf("groupBy Operator")
+	log.Debugf("-- groupBy Operator")
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
+		candidateNode := unwrapDoc(candidate.Node)
 
-		if candidate.Kind != SequenceNode {
-			return Context{}, fmt.Errorf("only arrays are supported for group by")
+		if candidateNode.Kind != yaml.SequenceNode {
+			return Context{}, fmt.Errorf("Only arrays are supported for group by")
 		}
 
-		newMatches, err := processIntoGroups(d, context, expressionNode.RHS, candidate)
+		newMatches, err := processIntoGroups(d, context, expressionNode.RHS, candidateNode)
 
 		if err != nil {
 			return Context{}, err
 		}
 
-		resultNode := candidate.CreateReplacement(SequenceNode, "!!seq", "")
+		resultNode := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 		for groupEl := newMatches.Front(); groupEl != nil; groupEl = groupEl.Next() {
-			groupResultNode := &CandidateNode{Kind: SequenceNode, Tag: "!!seq"}
+			groupResultNode := &yaml.Node{Kind: yaml.SequenceNode, Tag: "!!seq"}
 			groupList := groupEl.Value.(*list.List)
 			for groupItem := groupList.Front(); groupItem != nil; groupItem = groupItem.Next() {
-				groupResultNode.AddChild(groupItem.Value.(*CandidateNode))
+				groupResultNode.Content = append(groupResultNode.Content, groupItem.Value.(*yaml.Node))
 			}
 
-			resultNode.AddChild(groupResultNode)
+			resultNode.Content = append(resultNode.Content, groupResultNode)
 		}
 
-		results.PushBack(resultNode)
+		results.PushBack(candidate.CreateReplacement(resultNode))
 
 	}
 

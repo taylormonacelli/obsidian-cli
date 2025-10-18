@@ -2,6 +2,8 @@ package yqlib
 
 import (
 	"container/list"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 func assignTagOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
@@ -16,7 +18,7 @@ func assignTagOperator(d *dataTreeNavigator, context Context, expressionNode *Ex
 		}
 
 		if rhs.MatchingNodes.Front() != nil {
-			tag = rhs.MatchingNodes.Front().Value.(*CandidateNode).Value
+			tag = rhs.MatchingNodes.Front().Value.(*CandidateNode).Node.Value
 		}
 	}
 
@@ -36,23 +38,24 @@ func assignTagOperator(d *dataTreeNavigator, context Context, expressionNode *Ex
 			}
 
 			if rhs.MatchingNodes.Front() != nil {
-				tag = rhs.MatchingNodes.Front().Value.(*CandidateNode).Value
+				tag = rhs.MatchingNodes.Front().Value.(*CandidateNode).Node.Value
 			}
 		}
-		candidate.Tag = tag
+		unwrapDoc(candidate.Node).Tag = tag
 	}
 
 	return context, nil
 }
 
-func getTagOperator(_ *dataTreeNavigator, context Context, _ *ExpressionNode) (Context, error) {
+func getTagOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
 	log.Debugf("GetTagOperator")
 
 	var results = list.New()
 
 	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
 		candidate := el.Value.(*CandidateNode)
-		result := candidate.CreateReplacement(ScalarNode, "!!str", candidate.Tag)
+		node := &yaml.Node{Kind: yaml.ScalarNode, Value: unwrapDoc(candidate.Node).Tag, Tag: "!!str"}
+		result := candidate.CreateReplacement(node)
 		results.PushBack(result)
 	}
 

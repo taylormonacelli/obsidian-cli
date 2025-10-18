@@ -26,12 +26,11 @@ func popOpToResult(opStack []*token, result []*Operation) ([]*token, []*Operatio
 }
 
 func validateNoOpenTokens(token *token) error {
-	switch token.TokenType {
-	case openCollect:
+	if token.TokenType == openCollect {
 		return fmt.Errorf(("bad expression, could not find matching `]`"))
-	case openCollectObject:
+	} else if token.TokenType == openCollectObject {
 		return fmt.Errorf(("bad expression, could not find matching `}`"))
-	case openBracket:
+	} else if token.TokenType == openBracket {
 		return fmt.Errorf(("bad expression, could not find matching `)`"))
 	}
 	return nil
@@ -65,7 +64,7 @@ func (p *expressionPostFixerImpl) ConvertToPostfix(infixTokens []*token) ([]*Ope
 				opStack, result = popOpToResult(opStack, result)
 			}
 			if len(opStack) == 0 {
-				return nil, errors.New("bad path expression, got close collect brackets without matching opening bracket")
+				return nil, errors.New("Bad path expression, got close collect brackets without matching opening bracket")
 			}
 			// now we should have [ as the last element on the opStack, get rid of it
 			opStack = opStack[0 : len(opStack)-1]

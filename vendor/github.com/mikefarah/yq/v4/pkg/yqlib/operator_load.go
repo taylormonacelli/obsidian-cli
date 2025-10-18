@@ -5,6 +5,8 @@ import (
 	"container/list"
 	"fmt"
 	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
 var LoadYamlPreferences = YamlPreferences{
@@ -15,7 +17,8 @@ var LoadYamlPreferences = YamlPreferences{
 }
 
 type loadPrefs struct {
-	decoder Decoder
+	loadAsString bool
+	decoder      Decoder
 }
 
 func loadString(filename string) (*CandidateNode, error) {
@@ -27,10 +30,10 @@ func loadString(filename string) (*CandidateNode, error) {
 		return nil, err
 	}
 
-	return &CandidateNode{Kind: ScalarNode, Tag: "!!str", Value: string(filebytes)}, nil
+	return &CandidateNode{Node: &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: string(filebytes)}}, nil
 }
 
-func loadWithDecoder(filename string, decoder Decoder) (*CandidateNode, error) {
+func loadYaml(filename string, decoder Decoder) (*CandidateNode, error) {
 	if decoder == nil {
 		return nil, fmt.Errorf("could not load %s", filename)
 	}
@@ -48,52 +51,22 @@ func loadWithDecoder(filename string, decoder Decoder) (*CandidateNode, error) {
 
 	if documents.Len() == 0 {
 		// return null candidate
-		return &CandidateNode{Kind: ScalarNode, Tag: "!!null"}, nil
+		return &CandidateNode{Node: &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!null"}}, nil
 	} else if documents.Len() == 1 {
 		candidate := documents.Front().Value.(*CandidateNode)
 		return candidate, nil
 
+	} else {
+		sequenceNode := &CandidateNode{Node: &yaml.Node{Kind: yaml.SequenceNode}}
+		for doc := documents.Front(); doc != nil; doc = doc.Next() {
+			sequenceNode.Node.Content = append(sequenceNode.Node.Content, unwrapDoc(doc.Value.(*CandidateNode).Node))
+		}
+		return sequenceNode, nil
 	}
-	sequenceNode := &CandidateNode{Kind: SequenceNode}
-	for doc := documents.Front(); doc != nil; doc = doc.Next() {
-		sequenceNode.AddChild(doc.Value.(*CandidateNode))
-	}
-	return sequenceNode, nil
 }
 
-func loadStringOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	log.Debugf("loadString")
-
-	var results = list.New()
-
-	for el := context.MatchingNodes.Front(); el != nil; el = el.Next() {
-		candidate := el.Value.(*CandidateNode)
-
-		rhs, err := d.GetMatchingNodes(context.SingleReadonlyChildContext(candidate), expressionNode.RHS)
-		if err != nil {
-			return Context{}, err
-		}
-		if rhs.MatchingNodes.Front() == nil {
-			return Context{}, fmt.Errorf("filename expression returned nil")
-		}
-		nameCandidateNode := rhs.MatchingNodes.Front().Value.(*CandidateNode)
-
-		filename := nameCandidateNode.Value
-
-		contentsCandidate, err := loadString(filename)
-		if err != nil {
-			return Context{}, fmt.Errorf("failed to load %v: %w", filename, err)
-		}
-
-		results.PushBack(contentsCandidate)
-
-	}
-
-	return context.ChildContext(results), nil
-}
-
-func loadOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
-	log.Debugf("loadOperator")
+func loadYamlOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
+	log.Debugf("loadYamlOperator")
 
 	loadPrefs := expressionNode.Operation.Preferences.(loadPrefs)
 
@@ -110,15 +83,21 @@ func loadOperator(d *dataTreeNavigator, context Context, expressionNode *Express
 			return Context{}, err
 		}
 		if rhs.MatchingNodes.Front() == nil {
-			return Context{}, fmt.Errorf("filename expression returned nil")
+			return Context{}, fmt.Errorf("Filename expression returned nil")
 		}
 		nameCandidateNode := rhs.MatchingNodes.Front().Value.(*CandidateNode)
 
-		filename := nameCandidateNode.Value
+		filename := nameCandidateNode.Node.Value
 
-		contentsCandidate, err := loadWithDecoder(filename, loadPrefs.decoder)
+		var contentsCandidate *CandidateNode
+
+		if loadPrefs.loadAsString {
+			contentsCandidate, err = loadString(filename)
+		} else {
+			contentsCandidate, err = loadYaml(filename, loadPrefs.decoder)
+		}
 		if err != nil {
-			return Context{}, fmt.Errorf("failed to load %v: %w", filename, err)
+			return Context{}, fmt.Errorf("Failed to load %v: %w", filename, err)
 		}
 
 		results.PushBack(contentsCandidate)

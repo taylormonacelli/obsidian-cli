@@ -5,6 +5,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	yaml "gopkg.in/yaml.v3"
 )
 
 func moduloOperator(d *dataTreeNavigator, context Context, expressionNode *ExpressionNode) (Context, error) {
@@ -13,36 +15,41 @@ func moduloOperator(d *dataTreeNavigator, context Context, expressionNode *Expre
 	return crossFunction(d, context.ReadOnlyClone(), expressionNode, modulo, false)
 }
 
-func modulo(_ *dataTreeNavigator, _ Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
-	if lhs.Tag == "!!null" {
-		return nil, fmt.Errorf("%v (%v) cannot modulo by %v (%v)", lhs.Tag, lhs.GetNicePath(), rhs.Tag, rhs.GetNicePath())
+func modulo(d *dataTreeNavigator, context Context, lhs *CandidateNode, rhs *CandidateNode) (*CandidateNode, error) {
+	lhs.Node = unwrapDoc(lhs.Node)
+	rhs.Node = unwrapDoc(rhs.Node)
+
+	lhsNode := lhs.Node
+
+	if lhsNode.Tag == "!!null" {
+		return nil, fmt.Errorf("%v (%v) cannot modulo by %v (%v)", lhsNode.Tag, lhs.GetNicePath(), rhs.Node.Tag, rhs.GetNicePath())
 	}
 
-	target := lhs.CopyWithoutContent()
+	target := &yaml.Node{}
 
-	if lhs.Kind == ScalarNode && rhs.Kind == ScalarNode {
-		if err := moduloScalars(target, lhs, rhs); err != nil {
+	if lhsNode.Kind == yaml.ScalarNode && rhs.Node.Kind == yaml.ScalarNode {
+		if err := moduloScalars(target, lhsNode, rhs.Node); err != nil {
 			return nil, err
 		}
 	} else {
-		return nil, fmt.Errorf("%v (%v) cannot modulo by %v (%v)", lhs.Tag, lhs.GetNicePath(), rhs.Tag, rhs.GetNicePath())
+		return nil, fmt.Errorf("%v (%v) cannot modulo by %v (%v)", lhsNode.Tag, lhs.GetNicePath(), rhs.Node.Tag, rhs.GetNicePath())
 	}
 
-	return target, nil
+	return lhs.CreateReplacement(target), nil
 }
 
-func moduloScalars(target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode) error {
+func moduloScalars(target *yaml.Node, lhs *yaml.Node, rhs *yaml.Node) error {
 	lhsTag := lhs.Tag
-	rhsTag := rhs.guessTagFromCustomType()
+	rhsTag := guessTagFromCustomType(rhs)
 	lhsIsCustom := false
 	if !strings.HasPrefix(lhsTag, "!!") {
 		// custom tag - we have to have a guess
-		lhsTag = lhs.guessTagFromCustomType()
+		lhsTag = guessTagFromCustomType(lhs)
 		lhsIsCustom = true
 	}
 
 	if lhsTag == "!!int" && rhsTag == "!!int" {
-		target.Kind = ScalarNode
+		target.Kind = yaml.ScalarNode
 		target.Style = lhs.Style
 
 		format, lhsNum, err := parseInt64(lhs.Value)
@@ -61,7 +68,7 @@ func moduloScalars(target *CandidateNode, lhs *CandidateNode, rhs *CandidateNode
 		target.Tag = lhs.Tag
 		target.Value = fmt.Sprintf(format, remainder)
 	} else if (lhsTag == "!!int" || lhsTag == "!!float") && (rhsTag == "!!int" || rhsTag == "!!float") {
-		target.Kind = ScalarNode
+		target.Kind = yaml.ScalarNode
 		target.Style = lhs.Style
 
 		lhsNum, err := strconv.ParseFloat(lhs.Value, 64)
