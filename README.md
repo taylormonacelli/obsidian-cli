@@ -7,7 +7,7 @@
 ## Description
 
 Obsidian is a powerful and extensible knowledge base application
-that works on top of your local folder of plain text notes. This CLI tool (written in Go) will let you interact with the application using the terminal. You are currently able to open, search, move, create, update and delete notes, as well as print and modify YAML frontmatter.
+that works on top of your local folder of plain text notes. This CLI tool (written in Go) will let you interact with the application using the terminal. You are currently able to open, search, move, create, update and delete notes, as well as query and modify YAML frontmatter.
 
 ---
 
@@ -174,39 +174,35 @@ obsidian-cli create "{note-name}" --content "abcde" --open
 
 ```
 
-### Create / Update Note Frontmatter
+### Query or Modify Note Frontmatter
 
-Add, delete, print and modify YAML frontmatter in your Obsidian notes using [yq](https://mikefarah.gitbook.io/yq/v/v4.x) expressions.
+Query or modify YAML frontmatter in your Obsidian notes using [yq](https://mikefarah.gitbook.io/yq/v/v4.x) expressions.
 
 ```bash
-# Print all frontmatter from a note
+# Query all frontmatter from a note
 obsidian-cli frontmatter "{note-name}"
 
-# Print specific frontmatter field
+# Query specific frontmatter field
 obsidian-cli frontmatter .title "{note-name}"
 
-# Print nested fields
+# Query nested fields
 obsidian-cli frontmatter .metadata.category "{note-name}"
 
-# Print with explicit subcommand
-obsidian-cli frontmatter print .tags "{note-name}"
-
-# Edit frontmatter in-place
-obsidian-cli frontmatter edit '.draft = true' "{note-name}"
+# Modify frontmatter in-place
+obsidian-cli frontmatter '.draft = true' "{note-name}"
 
 # Add new field
-obsidian-cli frontmatter edit '.published = "2025-10-02"' "{note-name}"
+obsidian-cli frontmatter '.published = "2025-10-02"' "{note-name}"
 
 # Modify arrays
-obsidian-cli frontmatter edit '.tags += ["new-tag"]' "{note-name}"
+obsidian-cli frontmatter '.tags += ["new-tag"]' "{note-name}"
 
 # Use with specific vault
 obsidian-cli frontmatter .title "{note-name}" --vault "{vault-name}"
 
 # Aliases
 obsidian-cli fm .title "{note-name}"             # fm = frontmatter
-obsidian-cli fm p .author "{note-name}"          # p = print
-obsidian-cli fm e '.draft = true' "{note-name}"  # e = edit
+obsidian-cli fm '.author = "John"' "{note-name}" # modify with assignment
 ```
 
 ### Move / Rename Note
